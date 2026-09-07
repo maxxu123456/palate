@@ -1,0 +1,25 @@
+{
+  "page": 1,
+  "results": [
+    {
+      "adult": false,
+      "backdrop_path": null,
+      "genre_ids": [
+        27
+      ],
+      "id": 802,
+      "original_language": "pl",
+      "original_title": "Lokis. Rękopis profesora Wittembacha",
+      "overview": "",
+      "popularity": 1.204,
+      "poster_path": null,
+      "release_date": "1970-05-04",
+      "title": "The Bear",
+      "video": false,
+      "vote_average": 6.5,
+      "vote_count": 14
+    }
+  ],
+  "total_pages": 1,
+  "total_results": 1
+}

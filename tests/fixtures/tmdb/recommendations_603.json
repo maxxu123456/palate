@@ -1,0 +1,46 @@
+{
+  "page": 1,
+  "results": [
+    {
+      "adult": false,
+      "backdrop_path": "/6PSaMFZ6ZgbhIWVfCq5mK3tQMLo.jpg",
+      "genre_ids": [
+        878,
+        18
+      ],
+      "id": 1398,
+      "original_language": "ru",
+      "original_title": "Сталкер",
+      "overview": "A guide leads two men through an area known as the Zone to find a room that grants wishes.",
+      "popularity": 12.504,
+      "poster_path": "/mF6Ii1AqqWnrqCf7dFdDzJRHwlI.jpg",
+      "release_date": "1979-05-25",
+      "title": "Stalker",
+      "video": false,
+      "vote_average": 8.1,
+      "vote_count": 1547
+    },
+    {
+      "adult": false,
+      "backdrop_path": "/pJYb1ZBOEHXHfkEsCcJpWIM6Rpg.jpg",
+      "genre_ids": [
+        18,
+        35,
+        10749
+      ],
+      "id": 11104,
+      "original_language": "cn",
+      "original_title": "重庆森林",
+      "overview": "Two melancholy Hong Kong policemen fall in love: one with a mysterious female underworld figure, the other with a beautiful woman working at a late-night restaurant.",
+      "popularity": 15.221,
+      "poster_path": "/xBQUTnEuHR5BzBMiFdrqPOAKPjI.jpg",
+      "release_date": "1994-07-14",
+      "title": "Chungking Express",
+      "video": false,
+      "vote_average": 7.9,
+      "vote_count": 1412
+    }
+  ],
+  "total_pages": 1,
+  "total_results": 2
+}

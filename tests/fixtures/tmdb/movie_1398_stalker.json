@@ -1,0 +1,244 @@
+{
+  "adult": false,
+  "backdrop_path": "/6PSaMFZ6ZgbhIWVfCq5mK3tQMLo.jpg",
+  "belongs_to_collection": null,
+  "budget": 1000000,
+  "genres": [
+    {
+      "id": 878,
+      "name": "Science Fiction"
+    },
+    {
+      "id": 18,
+      "name": "Drama"
+    }
+  ],
+  "homepage": "",
+  "id": 1398,
+  "imdb_id": "tt0079944",
+  "original_language": "ru",
+  "original_title": "Сталкер",
+  "overview": "A guide leads two men through an area known as the Zone to find a room that grants wishes.",
+  "popularity": 12.504,
+  "poster_path": "/mF6Ii1AqqWnrqCf7dFdDzJRHwlI.jpg",
+  "production_companies": [
+    {
+      "id": 5120,
+      "logo_path": null,
+      "name": "Mosfilm",
+      "origin_country": "SU"
+    }
+  ],
+  "production_countries": [
+    {
+      "iso_3166_1": "SU",
+      "name": "Soviet Union"
+    }
+  ],
+  "release_date": "1979-05-25",
+  "revenue": 0,
+  "runtime": 162,
+  "spoken_languages": [
+    {
+      "english_name": "Russian",
+      "iso_639_1": "ru",
+      "name": "Pусский"
+    }
+  ],
+  "status": "Released",
+  "tagline": "",
+  "title": "Stalker",
+  "video": false,
+  "vote_average": 8.1,
+  "vote_count": 1547,
+  "credits": {
+    "cast": [
+      {
+        "adult": false,
+        "gender": 2,
+        "id": 8449,
+        "known_for_department": "Acting",
+        "name": "Alexander Kaidanovsky",
+        "original_name": "Alexander Kaidanovsky",
+        "popularity": 5.0,
+        "profile_path": null,
+        "cast_id": 1,
+        "character": "Stalker",
+        "credit_id": "52fe42efc3a36847f80313c9",
+        "order": 0
+      },
+      {
+        "adult": false,
+        "gender": 2,
+        "id": 8450,
+        "known_for_department": "Acting",
+        "name": "Anatoliy Solonitsyn",
+        "original_name": "Anatoliy Solonitsyn",
+        "popularity": 5.0,
+        "profile_path": null,
+        "cast_id": 2,
+        "character": "Writer",
+        "credit_id": "52fe42efc3a36847f80313cd",
+        "order": 1
+      },
+      {
+        "adult": false,
+        "gender": 2,
+        "id": 8451,
+        "known_for_department": "Acting",
+        "name": "Nikolai Grinko",
+        "original_name": "Nikolai Grinko",
+        "popularity": 5.0,
+        "profile_path": null,
+        "cast_id": 3,
+        "character": "Professor",
+        "credit_id": "52fe42efc3a36847f80313d1",
+        "order": 2
+      },
+      {
+        "adult": false,
+        "gender": 1,
+        "id": 8453,
+        "known_for_department": "Acting",
+        "name": "Alisa Freyndlikh",
+        "original_name": "Alisa Freyndlikh",
+        "popularity": 5.0,
+        "profile_path": null,
+        "cast_id": 4,
+        "character": "Stalker's Wife",
+        "credit_id": "52fe42efc3a36847f80313d5",
+        "order": 3
+      }
+    ],
+    "crew": [
+      {
+        "adult": false,
+        "gender": 2,
+        "id": 8452,
+        "known_for_department": "Directing",
+        "name": "Andrei Tarkovsky",
+        "original_name": "Andrei Tarkovsky",
+        "popularity": 4.0,
+        "profile_path": null,
+        "credit_id": "52fe42efc3a36847f80313bb",
+        "department": "Directing",
+        "job": "Director"
+      },
+      {
+        "adult": false,
+        "gender": 2,
+        "id": 8455,
+        "known_for_department": "Writing",
+        "name": "Arkadiy Strugatskiy",
+        "original_name": "Arkadiy Strugatskiy",
+        "popularity": 4.0,
+        "profile_path": null,
+        "credit_id": "52fe42efc3a36847f80313c1",
+        "department": "Writing",
+        "job": "Screenplay"
+      },
+      {
+        "adult": false,
+        "gender": 2,
+        "id": 8456,
+        "known_for_department": "Camera",
+        "name": "Aleksandr Knyazhinskiy",
+        "original_name": "Aleksandr Knyazhinskiy",
+        "popularity": 4.0,
+        "profile_path": null,
+        "credit_id": "52fe42efc3a36847f80313c7",
+        "department": "Camera",
+        "job": "Director of Photography"
+      },
+      {
+        "adult": false,
+        "gender": 2,
+        "id": 8457,
+        "known_for_department": "Sound",
+        "name": "Eduard Artemyev",
+        "original_name": "Eduard Artemyev",
+        "popularity": 4.0,
+        "profile_path": null,
+        "credit_id": "52fe42efc3a36847f80313d9",
+        "department": "Sound",
+        "job": "Original Music Composer"
+      },
+      {
+        "adult": false,
+        "gender": 1,
+        "id": 8458,
+        "known_for_department": "Editing",
+        "name": "Lyudmila Feiginova",
+        "original_name": "Lyudmila Feiginova",
+        "popularity": 4.0,
+        "profile_path": null,
+        "credit_id": "52fe42efc3a36847f80313dd",
+        "department": "Editing",
+        "job": "Editor"
+      }
+    ]
+  },
+  "keywords": {
+    "keywords": [
+      {
+        "id": 1157,
+        "name": "dystopia"
+      },
+      {
+        "id": 3616,
+        "name": "philosophy"
+      },
+      {
+        "id": 9748,
+        "name": "meaning of life"
+      },
+      {
+        "id": 818,
+        "name": "based on novel or book"
+      },
+      {
+        "id": 14544,
+        "name": "existentialism"
+      },
+      {
+        "id": 10683,
+        "name": "coming of age"
+      }
+    ]
+  },
+  "external_ids": {
+    "imdb_id": "tt0079944",
+    "wikidata_id": "Q471571",
+    "facebook_id": null,
+    "instagram_id": null,
+    "twitter_id": null
+  },
+  "release_dates": {
+    "results": [
+      {
+        "iso_3166_1": "SU",
+        "release_dates": [
+          {
+            "certification": "",
+            "iso_639_1": "ru",
+            "release_date": "1979-05-25T00:00:00.000Z",
+            "type": 3,
+            "note": ""
+          }
+        ]
+      },
+      {
+        "iso_3166_1": "US",
+        "release_dates": [
+          {
+            "certification": "",
+            "iso_639_1": "en",
+            "release_date": "2017-06-09T00:00:00.000Z",
+            "type": 3,
+            "note": "restoration"
+          }
+        ]
+      }
+    ]
+  }
+}

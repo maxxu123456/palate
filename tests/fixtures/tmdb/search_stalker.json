@@ -1,0 +1,44 @@
+{
+  "page": 1,
+  "results": [
+    {
+      "adult": false,
+      "backdrop_path": "/6PSaMFZ6ZgbhIWVfCq5mK3tQMLo.jpg",
+      "genre_ids": [
+        878,
+        18
+      ],
+      "id": 1398,
+      "original_language": "ru",
+      "original_title": "Сталкер",
+      "overview": "A guide leads two men through an area known as the Zone to find a room that grants wishes.",
+      "popularity": 12.504,
+      "poster_path": "/mF6Ii1AqqWnrqCf7dFdDzJRHwlI.jpg",
+      "release_date": "1979-05-25",
+      "title": "Stalker",
+      "video": false,
+      "vote_average": 8.1,
+      "vote_count": 1547
+    },
+    {
+      "adult": false,
+      "backdrop_path": null,
+      "genre_ids": [
+        53
+      ],
+      "id": 47116,
+      "original_language": "en",
+      "original_title": "Stalker",
+      "overview": "A thriller that shares nothing but a title.",
+      "popularity": 2.1,
+      "poster_path": null,
+      "release_date": "2010-05-01",
+      "title": "Stalker",
+      "video": false,
+      "vote_average": 4.9,
+      "vote_count": 31
+    }
+  ],
+  "total_pages": 1,
+  "total_results": 2
+}

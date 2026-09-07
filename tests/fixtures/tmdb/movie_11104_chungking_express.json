@@ -1,0 +1,200 @@
+{
+  "adult": false,
+  "backdrop_path": "/pJYb1ZBOEHXHfkEsCcJpWIM6Rpg.jpg",
+  "belongs_to_collection": null,
+  "budget": 0,
+  "genres": [
+    {
+      "id": 18,
+      "name": "Drama"
+    },
+    {
+      "id": 35,
+      "name": "Comedy"
+    },
+    {
+      "id": 10749,
+      "name": "Romance"
+    }
+  ],
+  "homepage": "",
+  "id": 11104,
+  "imdb_id": "tt0109424",
+  "original_language": "cn",
+  "original_title": "重庆森林",
+  "overview": "Two melancholy Hong Kong policemen fall in love: one with a mysterious female underworld figure, the other with a beautiful woman working at a late-night restaurant.",
+  "popularity": 15.221,
+  "poster_path": "/xBQUTnEuHR5BzBMiFdrqPOAKPjI.jpg",
+  "production_companies": [
+    {
+      "id": 10289,
+      "logo_path": null,
+      "name": "Jet Tone Production",
+      "origin_country": "HK"
+    }
+  ],
+  "production_countries": [
+    {
+      "iso_3166_1": "HK",
+      "name": "Hong Kong"
+    }
+  ],
+  "release_date": "1994-07-14",
+  "revenue": 600200,
+  "runtime": 102,
+  "spoken_languages": [
+    {
+      "english_name": "Cantonese",
+      "iso_639_1": "cn",
+      "name": "广州话"
+    },
+    {
+      "english_name": "Mandarin",
+      "iso_639_1": "zh",
+      "name": "普通话"
+    }
+  ],
+  "status": "Released",
+  "tagline": "",
+  "title": "Chungking Express",
+  "video": false,
+  "vote_average": 7.9,
+  "vote_count": 1412,
+  "credits": {
+    "cast": [
+      {
+        "adult": false,
+        "gender": 1,
+        "id": 1341,
+        "known_for_department": "Acting",
+        "name": "Brigitte Lin",
+        "original_name": "Brigitte Lin",
+        "popularity": 5.0,
+        "profile_path": null,
+        "cast_id": 1,
+        "character": "Woman in blonde wig",
+        "credit_id": "52fe43f4c3a36847f8070cf5",
+        "order": 0
+      },
+      {
+        "adult": false,
+        "gender": 2,
+        "id": 11107,
+        "known_for_department": "Acting",
+        "name": "Takeshi Kaneshiro",
+        "original_name": "Takeshi Kaneshiro",
+        "popularity": 5.0,
+        "profile_path": null,
+        "cast_id": 2,
+        "character": "He Qiwu, Cop 223",
+        "credit_id": "52fe43f4c3a36847f8070cf9",
+        "order": 1
+      },
+      {
+        "adult": false,
+        "gender": 2,
+        "id": 11105,
+        "known_for_department": "Acting",
+        "name": "Tony Leung Chiu-wai",
+        "original_name": "Tony Leung Chiu-wai",
+        "popularity": 5.0,
+        "profile_path": null,
+        "cast_id": 3,
+        "character": "Cop 663",
+        "credit_id": "52fe43f4c3a36847f8070cfd",
+        "order": 2
+      },
+      {
+        "adult": false,
+        "gender": 1,
+        "id": 11106,
+        "known_for_department": "Acting",
+        "name": "Faye Wong",
+        "original_name": "Faye Wong",
+        "popularity": 5.0,
+        "profile_path": null,
+        "cast_id": 4,
+        "character": "Faye",
+        "credit_id": "52fe43f4c3a36847f8070d01",
+        "order": 3
+      }
+    ],
+    "crew": [
+      {
+        "adult": false,
+        "gender": 2,
+        "id": 12453,
+        "known_for_department": "Directing",
+        "name": "Wong Kar-wai",
+        "original_name": "Wong Kar-wai",
+        "popularity": 4.0,
+        "profile_path": null,
+        "credit_id": "52fe43f4c3a36847f8070ce1",
+        "department": "Directing",
+        "job": "Director"
+      },
+      {
+        "adult": false,
+        "gender": 2,
+        "id": 12453,
+        "known_for_department": "Writing",
+        "name": "Wong Kar-wai",
+        "original_name": "Wong Kar-wai",
+        "popularity": 4.0,
+        "profile_path": null,
+        "credit_id": "52fe43f4c3a36847f8070ce7",
+        "department": "Writing",
+        "job": "Screenplay"
+      },
+      {
+        "adult": false,
+        "gender": 2,
+        "id": 11108,
+        "known_for_department": "Camera",
+        "name": "Christopher Doyle",
+        "original_name": "Christopher Doyle",
+        "popularity": 4.0,
+        "profile_path": null,
+        "credit_id": "52fe43f4c3a36847f8070ced",
+        "department": "Camera",
+        "job": "Director of Photography"
+      }
+    ]
+  },
+  "keywords": {
+    "keywords": [
+      {
+        "id": 1382,
+        "name": "hong kong"
+      },
+      {
+        "id": 10235,
+        "name": "loneliness"
+      },
+      {
+        "id": 6270,
+        "name": "unrequited love"
+      }
+    ]
+  },
+  "external_ids": {
+    "imdb_id": "tt0109424",
+    "wikidata_id": "Q1194480"
+  },
+  "release_dates": {
+    "results": [
+      {
+        "iso_3166_1": "HK",
+        "release_dates": [
+          {
+            "certification": "IIA",
+            "iso_639_1": "cn",
+            "release_date": "1994-07-14T00:00:00.000Z",
+            "type": 3,
+            "note": ""
+          }
+        ]
+      }
+    ]
+  }
+}
