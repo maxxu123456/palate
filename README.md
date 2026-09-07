@@ -10,6 +10,7 @@ crowd.
 
 ```sh
 uv sync
+mkdir -p ~/.config/palate
 cp palate.toml.example ~/.config/palate/palate.toml
 cp .env.example .env
 ```
@@ -28,7 +29,6 @@ environment variable that holds them.
 Then export your Letterboxd data (Settings, Data, Export your data) and import it:
 
 ```sh
-palate doctor
 palate ingest ~/Downloads/letterboxd-2026-09-14.zip
 palate ingest review
 ```
@@ -38,10 +38,6 @@ palate ingest review
 Precedence, highest first: CLI flag, `PALATE_` environment variables, `.env`,
 `./palate.toml`, `~/.config/palate/palate.toml`, defaults. Unknown keys are an
 error at startup rather than a silent no-op.
-
-```sh
-palate config show
-```
 
 ## What works
 
@@ -57,7 +53,8 @@ titles.
 Title resolution needs a TMDB search backend and there is not one wired in, so a
 fresh import resolves only the URIs that already carry a TMDB id and queues the
 rest for review. The corpus crawl, the embedding index, the taste model, the
-agent and the evaluation harness are not built.
+agent and the evaluation harness are not built, and the CLI so far is only
+`palate ingest` and `palate version`.
 
 ## License
 
