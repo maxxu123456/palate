@@ -1,0 +1,134 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "palate"
+version = "0.1.0"
+description = "Local-first film recommender built on a Letterboxd history"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Max Xu", email = "maxxu123456@gmail.com" }]
+keywords = ["film", "recommender", "retrieval", "letterboxd", "tmdb"]
+classifiers = [
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "License :: OSI Approved :: MIT License",
+  "Private :: Do Not Upload",
+]
+
+# The base install runs ingest, crawl, index, retrieval, taste, agent and CLI.
+# It pulls no torch, no transformers, no fastapi and no scipy.
+dependencies = [
+  "httpx>=0.28,<0.29",
+  "pydantic>=2.9,<3",
+  "pydantic-settings>=2.6,<3",
+  "sqlite-vec>=0.1.9,<0.2",
+  "numpy>=2.1,<3",
+  "typer>=0.15,<0.17",
+  "rich>=13.9,<15",
+  "anyio>=4.6,<5",
+  "orjson>=3.10,<4",
+  "python-dotenv>=1.0,<2",
+  "PyYAML>=6.0,<7",
+]
+
+[project.optional-dependencies]
+# The HTTP surface. Not needed for the CLI.
+api = [
+  "fastapi>=0.115,<0.120",
+  "uvicorn[standard]>=0.32,<0.40",
+  "sse-starlette>=2.1,<3",
+]
+
+# Local models on MPS. torch<2.9 has no cp314 macOS arm64 wheel, so a 3.14 install
+# without this floor falls back to a source build that takes an hour and then fails.
+# sentence-transformers 6 requires transformers 5, so the two floors move together.
+local = [
+  "torch>=2.9",
+  "sentence-transformers>=6,<7",
+  "transformers>=5,<6",
+  "huggingface-hub>=1.3,<2",
+]
+
+# Remote inference through the HF router. No torch. Hub 1.x ships the inference
+# client in the base package, so there is no extra to ask for any more.
+hf = [
+  "huggingface-hub>=1.3,<2",
+]
+
+# Evaluation only. The taste model and the serving path are numpy-only on purpose,
+# so nothing on a request path needs this extra.
+eval = [
+  "scipy>=1.14,<2",
+  "matplotlib>=3.9,<4",
+]
+
+all = ["palate[api,local,hf,eval]"]
+
+[project.scripts]
+palate = "palate.cli:app"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3,<9",
+  "pytest-asyncio>=0.24,<1",
+  "pytest-timeout>=2.3,<3",
+  "pytest-cov>=6.0,<8",
+  "respx>=0.22,<0.23",
+  "hypothesis>=6.112,<7",
+  "ruff>=0.7,<1",
+  "mypy>=1.13,<2",
+  "types-PyYAML",
+]
+
+# Data files inside the package tree (sql, prompts) ride along with packages.
+[tool.hatch.build.targets.wheel]
+packages = ["src/palate"]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+timeout = 60
+# The default local run is exactly the CI run.
+addopts = "-m 'not network and not torch and not ollama' --strict-markers -q"
+markers = [
+  "network: hits a real remote endpoint, used only with PALATE_RECORD=1",
+  "torch: needs the local extra installed",
+  "ollama: needs a running Ollama daemon",
+  "slow: over five seconds",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "ASYNC", "TID", "PTH"]
+ignore = ["E501"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"torch".msg = "import torch only inside a require() guard, never at module scope"
+"sentence_transformers".msg = "import inside a require() guard, never at module scope"
+"transformers".msg = "import inside a require() guard, never at module scope"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+plugins = []
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["sqlite_vec.*", "sentence_transformers.*", "torch.*", "respx.*"]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+branch = true
+source = ["src/palate"]
+omit = ["*/migrations/*", "*/prompts/*"]
