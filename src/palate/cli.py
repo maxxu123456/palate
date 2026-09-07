@@ -3,6 +3,7 @@
 import typer
 
 from palate import __version__
+from palate.commands import ingest_cmd
 
 app = typer.Typer(
     name="palate",
@@ -22,3 +23,6 @@ def main() -> None:
 def version() -> None:
     """Print the installed version."""
     typer.echo(__version__)
+
+
+ingest_cmd.register(app)
