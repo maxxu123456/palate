@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import sqlite3
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -11,7 +12,10 @@ from palate.tmdb.models import MovieDetail
 
 # Bumped whenever this module changes what it extracts, so `tmdb renormalize`
 # can tell an old row from a new one without re-crawling.
-DETAIL_VERSION = 1
+DETAIL_VERSION = 2
+
+ANIMATION_GENRE = 16
+DOCUMENTARY_GENRE = 99
 
 # Blockbusters credit hundreds of people and the tail is noise for every channel
 # that reads credits. The raw payload keeps the rest if that judgement changes.
@@ -194,6 +198,7 @@ def write_film(
     _write_countries(conn, film)
     _write_languages(conn, film)
     _write_companies(conn, film)
+    _write_stats(conn, film, computed_at=fetched_at)
 
 
 def _write_films(
@@ -244,6 +249,33 @@ def _write_films(
             DETAIL_VERSION,
             etag,
             fetched_at,
+        ),
+    )
+
+
+def _write_stats(conn: sqlite3.Connection, film: NormalizedFilm, *, computed_at: str) -> None:
+    # primary_region lives only here, because film_countries is a set and loses TMDB's order.
+    genre_ids = {genre_id for genre_id, _ in film.genres}
+    conn.execute(
+        "insert into film_stats (tmdb_id, n_directors, n_cast, n_keywords, log_vote_count, "
+        "has_overview, is_animation, is_documentary, primary_region, computed_at) "
+        "values (?,?,?,?,?,?,?,?,?,?) on conflict(tmdb_id) do update set "
+        "n_directors = excluded.n_directors, n_cast = excluded.n_cast, "
+        "n_keywords = excluded.n_keywords, log_vote_count = excluded.log_vote_count, "
+        "has_overview = excluded.has_overview, is_animation = excluded.is_animation, "
+        "is_documentary = excluded.is_documentary, primary_region = excluded.primary_region, "
+        "computed_at = excluded.computed_at",
+        (
+            film.tmdb_id,
+            len(film.director_ids),
+            sum(1 for c in film.credits if c.credit_kind == "cast"),
+            len(film.keywords),
+            math.log1p(film.vote_count),
+            int(bool(film.overview)),
+            int(ANIMATION_GENRE in genre_ids),
+            int(DOCUMENTARY_GENRE in genre_ids),
+            film.primary_region,
+            computed_at,
         ),
     )
 

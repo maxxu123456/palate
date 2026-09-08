@@ -12,6 +12,7 @@ from rich.table import Table
 from palate import paths
 from palate.config import Settings, load_settings, require_secret, resolve_secret
 from palate.db.connect import Database, open_database
+from palate.ingest.corpus import EligibilityReport, apply_eligibility, coverage
 from palate.providers.http import client_session
 from palate.tmdb.client import TMDBClient
 from palate.tmdb.crawl import (
@@ -128,12 +129,20 @@ def crawl(
             f"{report.n_ok} fetched, {report.n_304} unchanged, "
             f"{report.n_err} retried, {report.n_dead} gone"
         )
+        print_eligibility(apply_eligibility(db))
         remaining = status(db).queue
         left = remaining.get("pending", 0) + remaining.get("leased", 0)
         if left:
             console.print(f"{left} rows left, run `palate tmdb crawl --resume` to finish")
     finally:
         db.close()
+
+
+def print_eligibility(report: EligibilityReport) -> None:
+    """Say how many crawled films are recommendable and why the rest are not."""
+    console.print(f"{report.n_eligible} of {report.n_members} crawled films are recommendable")
+    for reason, n in sorted(report.reasons.items(), key=lambda kv: -kv[1]):
+        console.print(f"  {reason}: {n}")
 
 
 @tmdb_app.command("status")
@@ -143,6 +152,7 @@ def show_status() -> None:
     db = open_db(settings)
     try:
         report = status(db)
+        regions = coverage(db)
     finally:
         db.close()
     queue = Table(box=None, pad_edge=False)
@@ -160,6 +170,14 @@ def show_status() -> None:
         f"{report.n_films} films, {report.n_enriched} enriched, {report.n_corpus} in the corpus"
     )
     console.print(f"{report.n_raw} raw payloads, {report.raw_bytes / 1e6:.1f} MB compressed")
+    if regions:
+        total_members = sum(r.n_members for r in regions)
+        total_eligible = sum(r.n_eligible for r in regions)
+        console.print(f"{total_eligible} of {total_members} eligible")
+        # A global 0.9 hiding a 0.55 for Hong Kong is the reason this breakdown exists.
+        for region in regions[:10]:
+            name = region.region or "unknown"
+            console.print(f"  {name} {region.n_eligible}/{region.n_members} {region.share:.2f}")
     for run_id, kind, run_status, n_ok, n_304, n_err, n_dead in report.runs:
         console.print(
             f"{run_id} {kind} {run_status} ok {n_ok} unchanged {n_304} "
@@ -176,9 +194,12 @@ def run_renormalize(
     db = open_db(settings)
     try:
         done = renormalize(db, limit=limit)
+        # Stats moved, so the floor has to be reapplied or the eligible count lies.
+        eligible = apply_eligibility(db)
     finally:
         db.close()
     console.print(f"rebuilt {done} films from local payloads")
+    print_eligibility(eligible)
 
 
 @tmdb_app.command("compact")
