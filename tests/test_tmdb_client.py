@@ -171,13 +171,15 @@ async def test_discover_spells_its_parameters_the_way_tmdb_does() -> None:
 
 
 @respx.mock
-async def test_search_pins_the_year_and_yields_candidates() -> None:
+async def test_search_matches_any_release_year_not_only_the_primary_one() -> None:
     route = respx.get(f"{API}/search/movie").mock(
         return_value=httpx.Response(200, json=payload("search_stalker.json"))
     )
     async with build_client() as http:
         response = await make_client(http).search_movie("Stalker", year=1979)
-    assert route.calls.last.request.url.params["primary_release_year"] == "1979"
+    query = route.calls.last.request.url.params
+    assert query["year"] == "1979"
+    assert "primary_release_year" not in query
     candidates = to_candidates(response.payload or {})
     assert [c.tmdb_id for c in candidates] == [1398, 47116]
     assert candidates[0].year == 1979
@@ -215,6 +217,34 @@ def test_title_search_resolves_a_row_without_an_event_loop_of_its_own() -> None:
     # One portal, two calls, so the pool is shared rather than rebuilt per title.
     assert len(seen) == 2
     assert "primary_release_year" not in seen[1].params
+
+
+def test_title_search_reads_release_windows_when_the_primary_year_misses() -> None:
+    detail = payload("reissue_stalker_1979.json")
+    page = {
+        "page": 1,
+        "total_pages": 1,
+        "total_results": 1,
+        "results": [
+            {
+                "id": 1398,
+                "title": "Stalker",
+                "original_title": "Сталкер",
+                "release_date": detail["release_date"],
+                "vote_count": detail["vote_count"],
+            }
+        ],
+    }
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        return httpx.Response(200, json=page if "search" in request.url.path else detail)
+
+    with TMDBTitleSearch(TOKEN, transport=httpx.MockTransport(handler)) as search:
+        candidates = search.search("Stalker", 1979)
+    assert seen == ["/3/search/movie", "/3/movie/1398"]
+    assert candidates[0].years == (2017, 1979)
 
 
 def test_title_search_outside_its_context_is_a_programming_error() -> None:

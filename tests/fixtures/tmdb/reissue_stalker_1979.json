@@ -1,0 +1,72 @@
+{
+  "adult": false,
+  "belongs_to_collection": null,
+  "budget": 1000000,
+  "genres": [
+    {
+      "id": 878,
+      "name": "Science Fiction"
+    },
+    {
+      "id": 18,
+      "name": "Drama"
+    }
+  ],
+  "id": 1398,
+  "imdb_id": "tt0079944",
+  "original_language": "ru",
+  "original_title": "Сталкер",
+  "overview": "A guide leads two men through an area known as the Zone to find a room that grants wishes.",
+  "popularity": 12.504,
+  "poster_path": "/mF6Ii1AqqWnrqCf7dFdDzJRHwlI.jpg",
+  "production_countries": [
+    {
+      "iso_3166_1": "SU",
+      "name": "Soviet Union"
+    }
+  ],
+  "release_date": "2017-06-09",
+  "revenue": 0,
+  "runtime": 162,
+  "spoken_languages": [
+    {
+      "english_name": "Russian",
+      "iso_639_1": "ru",
+      "name": "Pусский"
+    }
+  ],
+  "status": "Released",
+  "tagline": "",
+  "title": "Stalker",
+  "video": false,
+  "vote_average": 8.1,
+  "vote_count": 1547,
+  "release_dates": {
+    "results": [
+      {
+        "iso_3166_1": "SU",
+        "release_dates": [
+          {
+            "certification": "",
+            "iso_639_1": "ru",
+            "release_date": "1979-05-25T00:00:00.000Z",
+            "type": 3,
+            "note": ""
+          }
+        ]
+      },
+      {
+        "iso_3166_1": "US",
+        "release_dates": [
+          {
+            "certification": "",
+            "iso_639_1": "en",
+            "release_date": "2017-06-09T00:00:00.000Z",
+            "type": 3,
+            "note": "4K restoration"
+          }
+        ]
+      }
+    ]
+  }
+}

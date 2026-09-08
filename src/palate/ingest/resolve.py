@@ -34,6 +34,13 @@ class Candidate:
     original_title: str | None = None
     year: int | None = None
     vote_count: int = 0
+    release_years: tuple[int, ...] = ()
+
+    @property
+    def years(self) -> tuple[int, ...]:
+        """Primary year first, then every other territory release."""
+        primary = [self.year] if self.year is not None else []
+        return tuple(primary + [y for y in self.release_years if y != self.year])
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,11 +125,19 @@ def same_title(query: str, candidate: Candidate) -> bool:
     )
 
 
+def year_drift(year: int | None, candidate: Candidate) -> int | None:
+    """Years to the nearest release. A restoration is a release, not a different film."""
+    if year is None or not candidate.years:
+        return None
+    return min(abs(year - known) for known in candidate.years)
+
+
 def year_proximity(year: int | None, candidate: Candidate) -> float:
-    """1.0 on an exact year, falling to 0 four years out. Unknown years score neutral."""
-    if year is None or candidate.year is None:
+    """1.0 on a year the film was released in, falling to 0 four years out."""
+    drift = year_drift(year, candidate)
+    if drift is None:
         return 0.5
-    return max(0.0, 1.0 - abs(year - candidate.year) / 4.0)
+    return max(0.0, 1.0 - drift / 4.0)
 
 
 def vote_weight(candidate: Candidate) -> float:
@@ -175,7 +190,7 @@ def _classify(
     ranked: list[Candidate],
     top: tuple[tuple[int, str, int | None, float], ...],
 ) -> Resolution:
-    exact = [c for c in ranked if same_title(row.title, c) and c.year == row.year]
+    exact = [c for c in ranked if same_title(row.title, c) and row.year in c.years]
     # Two real films share a title and a year often enough that picking the popular one is wrong.
     if len(exact) > 1:
         return Resolution(row.uri, None, "failed", 0.4, top, reason="ambiguous_title_year")
@@ -184,7 +199,7 @@ def _classify(
 
     best = ranked[0]
     similarity = title_similarity(row.title, best)
-    drift = abs(row.year - best.year) if row.year is not None and best.year is not None else None
+    drift = year_drift(row.year, best)
 
     # Reissues and international releases land a year out, which is common, not exceptional.
     if same_title(row.title, best) and drift == 1:

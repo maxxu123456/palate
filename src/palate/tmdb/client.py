@@ -17,12 +17,16 @@ from pydantic import SecretStr
 from palate.errors import ProviderTimeout, ProviderUnavailable, TMDBError
 from palate.ingest.resolve import Candidate
 from palate.providers.http import build_client
-from palate.tmdb.models import DiscoverParams, MoviePage
+from palate.tmdb.models import DiscoverParams, MovieDetail, MoviePage
 
 BASE_URL = "https://api.themoviedb.org/3"
 
 # Four appends is one request and one rate limit token instead of five.
 DEFAULT_APPEND = ("credits", "keywords", "release_dates", "external_ids")
+
+# How many search hits are worth a release window lookup when the year disagrees.
+WINDOW_LOOKUPS = 3
+WINDOW_APPEND = ("release_dates",)
 
 JSONObject = dict[str, Any]
 
@@ -120,10 +124,10 @@ class TMDBClient:
         return await self._get("/discover/movie", query)
 
     async def search_movie(self, query: str, *, year: int | None = None) -> TMDBResponse:
-        """Title search, optionally pinned to a primary release year."""
+        """Title search. `year` matches any release, `primary_release_year` only the first."""
         params = {"language": self._language, "query": query, "include_adult": "false"}
         if year is not None:
-            params["primary_release_year"] = str(year)
+            params["year"] = str(year)
         return await self._get("/search/movie", params)
 
     async def recommendations(self, tmdb_id: int, *, page: int = 1) -> TMDBResponse:
@@ -234,12 +238,37 @@ class TMDBTitleSearch:
 
     def search(self, title: str, year: int | None) -> Sequence[Candidate]:
         """Candidates for one export row, ordered as TMDB ordered them."""
-        if self._portal is None or self._client is None:
+        portal, client = self._portal, self._client
+        if portal is None or client is None:
             raise RuntimeError("use TMDBTitleSearch as a context manager")
-        response = self._portal.call(partial(self._client.search_movie, title, year=year))
+        response = portal.call(partial(client.search_movie, title, year=year))
         if not response.ok or response.payload is None:
             return ()
-        return to_candidates(response.payload, limit=self._limit)
+        found = list(to_candidates(response.payload, limit=self._limit))
+        if year is None or any(year in c.years for c in found):
+            return tuple(found)
+        # A restoration dates the primary release to the reissue, so read the windows.
+        for index, candidate in enumerate(found[:WINDOW_LOOKUPS]):
+            detail = portal.call(partial(client.movie, candidate.tmdb_id, append=WINDOW_APPEND))
+            if not detail.ok or detail.payload is None:
+                continue
+            found[index] = to_candidate(detail.payload)
+            if year in found[index].years:
+                break
+        return tuple(found)
+
+
+def to_candidate(payload: JSONObject) -> Candidate:
+    """One /movie/{id} payload as a candidate, release windows included."""
+    detail = MovieDetail.model_validate(payload)
+    return Candidate(
+        tmdb_id=detail.id,
+        title=detail.title,
+        original_title=detail.original_title,
+        year=detail.year,
+        vote_count=detail.vote_count,
+        release_years=detail.release_years,
+    )
 
 
 def to_candidates(payload: JSONObject, *, limit: int = 10) -> tuple[Candidate, ...]:

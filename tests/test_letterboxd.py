@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import sqlite3
 import tempfile
 import zipfile
@@ -34,8 +35,11 @@ from palate.ingest.resolve import (
     tmdb_id_in_uri,
 )
 from palate.paths import migrations_dir
+from palate.tmdb.client import to_candidate
 
 FIXTURE = Path(__file__).parent / "fixtures" / "letterboxd" / "export.zip"
+# A TMDB entry whose primary release is the restoration, not the release the user saw.
+REISSUE = Path(__file__).parent / "fixtures" / "tmdb" / "reissue_stalker_1979.json"
 
 # What a TMDB search would have returned for the fixture, including the awkward cases.
 CATALOGUE: dict[str, list[Candidate]] = {
@@ -79,6 +83,10 @@ def db(tmp_path: Path) -> Database:
 
 def row_for(rows: list[ExportRow], title: str) -> ExportRow:
     return next(r for r in rows if r.title == title)
+
+
+def reissue_candidate() -> Candidate:
+    return to_candidate(json.loads(REISSUE.read_text(encoding="utf-8")))
 
 
 def test_half_stars_always_land_on_one_to_ten() -> None:
@@ -208,6 +216,31 @@ def test_a_year_off_by_one_is_a_reissue_not_a_failure() -> None:
     assert resolution.method == "fuzzy"
     assert resolution.confidence == 0.85
     assert not resolution.needs_review
+
+
+def test_a_restoration_carries_every_year_it_was_released_in() -> None:
+    candidate = reissue_candidate()
+    assert candidate.year == 2017
+    assert candidate.years == (2017, 1979)
+
+
+def test_the_export_year_is_scored_against_every_release_window() -> None:
+    row = row_for(read_export(FIXTURE).rows, "Stalker")
+    resolution = resolve(row, StaticTitleSearch({"Stalker": [reissue_candidate()]}))
+    assert resolution.tmdb_id == 1398
+    assert resolution.method == "exact"
+    assert resolution.confidence == 0.95
+
+
+def test_a_release_window_one_year_out_is_still_the_reissue_case() -> None:
+    off_by_one = Candidate(1398, "Stalker", "Сталкер", 2017, 1547, (1980, 2017))
+    resolution = resolve(
+        row_for(read_export(FIXTURE).rows, "Stalker"),
+        StaticTitleSearch({"Stalker": [off_by_one]}),
+    )
+    assert resolution.tmdb_id == 1398
+    assert resolution.method == "fuzzy"
+    assert resolution.confidence == 0.85
 
 
 def test_two_films_sharing_a_title_and_year_are_never_auto_picked() -> None:

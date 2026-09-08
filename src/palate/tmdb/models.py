@@ -151,6 +151,17 @@ class MovieDetail(BaseModel):
         return year_of(self.release_date)
 
     @property
+    def release_years(self) -> tuple[int, ...]:
+        """Every year the film opened somewhere, which is what a reissue needs."""
+        years = {
+            year
+            for country in self.release_dates.results
+            for entry in country.release_dates
+            if (year := year_of(entry.release_date)) is not None
+        }
+        return tuple(sorted(years))
+
+    @property
     def primary_region(self) -> str | None:
         """First production country, which is what the vote floor keys off."""
         return self.production_countries[0].iso_3166_1 if self.production_countries else None
