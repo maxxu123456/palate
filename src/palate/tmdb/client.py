@@ -191,11 +191,7 @@ def _json(response: httpx.Response, path: str) -> JSONObject:
 
 
 class TMDBTitleSearch:
-    """Synchronous TitleSearch over /search/movie, for the import path.
-
-    Enter it as a context manager. It drives one background event loop, so the
-    connection pool survives across the whole import.
-    """
+    """Synchronous title search for the import path. Use it as a context manager."""
 
     def __init__(
         self,
@@ -216,6 +212,7 @@ class TMDBTitleSearch:
         self._client: TMDBClient | None = None
 
     def __enter__(self) -> TMDBTitleSearch:
+        # One portal for the whole import, so the pool is not rebuilt per title.
         portal = self._stack.enter_context(start_blocking_portal())
         http = build_client(transport=self._transport)
         self._stack.callback(partial(portal.call, http.aclose))

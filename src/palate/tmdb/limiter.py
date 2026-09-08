@@ -12,12 +12,9 @@ import anyio
 _ALMOST = 1e-9
 
 
+# TMDB documents no limit any more, so the configured rate only needs headroom.
 class AIMDLimiter:
-    """Token bucket that halves its rate on 429 and recovers additively.
-
-    TMDB documents no limit any more, so the default leaves headroom under the
-    roughly fifty per second it actually enforces.
-    """
+    """Paces outbound requests, halving on a 429 and climbing back on success."""
 
     def __init__(
         self,
