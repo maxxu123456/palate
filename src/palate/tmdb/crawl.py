@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import calendar
 import sqlite3
 import zlib
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
+from datetime import date
 from typing import Any
 
 import anyio
@@ -14,7 +16,7 @@ import orjson
 from palate import clock
 from palate.clock import now_iso
 from palate.db.connect import Database
-from palate.errors import ProviderTimeout, ProviderUnavailable
+from palate.errors import DiscoverWindowTooLarge, ProviderTimeout, ProviderUnavailable
 from palate.hashing import canonical_json, request_sha, sha256_hex
 from palate.ids import new_id
 from palate.tmdb.client import TMDBClient, TMDBResponse
@@ -26,8 +28,13 @@ MAX_ATTEMPTS = 5
 BACKOFF_BASE_S = 2.0
 BACKOFF_CAP_S = 300.0
 
-# /discover/movie stops at 500 pages of 20, whatever the query says it has.
+# /discover/movie stops at 500 pages of 20 and 10000 results, whatever the query
+# says it has, so the planner keeps every window under the second number.
 DISCOVER_PAGE_CAP = 500
+DISCOVER_RESULT_CAP = 10_000
+
+# A year over the ceiling is cut into quarters, and a quarter into months.
+_SPLITS = (3, 1)
 
 RAW_LEVEL = 6
 
@@ -41,6 +48,27 @@ class Lease:
     tmdb_id: int | None
     params: dict[str, Any]
     attempts: int
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoverWindow:
+    """A release date span narrow enough that the result ceiling never truncates it."""
+
+    start: date
+    end: date
+    vote_count_gte: int = 0
+    sort_by: str = "vote_count.desc"
+    region: str | None = None
+
+    def params(self) -> DiscoverParams:
+        """The discover query this window stands for."""
+        return DiscoverParams(
+            sort_by=self.sort_by,
+            vote_count_gte=self.vote_count_gte or None,
+            primary_release_date_gte=self.start.isoformat(),
+            primary_release_date_lte=self.end.isoformat(),
+            region=self.region,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -282,6 +310,84 @@ def seed_onehop(db: Database, *, top: int = 200, priority: int = 5) -> int:
                     params={"endpoint": endpoint, "page": 1},
                     priority=priority,
                 )
+    return added
+
+
+def plan_windows(
+    *,
+    probe: Callable[[DiscoverWindow], int],
+    since: int = 1920,
+    until: int | None = None,
+    vote_count_gte: int = 0,
+    sort_by: str = "vote_count.desc",
+    region: str | None = None,
+) -> list[DiscoverWindow]:
+    """One window per year, split until every window fits under the result ceiling."""
+    plan: list[DiscoverWindow] = []
+    for year in range(since, (until or clock.now().year) + 1):
+        whole = DiscoverWindow(
+            date(year, 1, 1), date(year, 12, 31), vote_count_gte, sort_by, region
+        )
+        plan.extend(_fit(whole, probe, 0))
+    return plan
+
+
+def _fit(
+    window: DiscoverWindow, probe: Callable[[DiscoverWindow], int], depth: int
+) -> list[DiscoverWindow]:
+    total = probe(window)
+    if total <= DISCOVER_RESULT_CAP:
+        return [window]
+    if depth >= len(_SPLITS):
+        raise DiscoverWindowTooLarge(
+            window.start.isoformat(), window.end.isoformat(), total, DISCOVER_RESULT_CAP
+        )
+    fitted: list[DiscoverWindow] = []
+    for piece in _divide(window, _SPLITS[depth]):
+        fitted.extend(_fit(piece, probe, depth + 1))
+    return fitted
+
+
+def _divide(window: DiscoverWindow, months: int) -> list[DiscoverWindow]:
+    pieces: list[DiscoverWindow] = []
+    start = window.start
+    while start <= window.end:
+        last = _add_months(start, months - 1)
+        pieces.append(replace(window, start=start, end=min(_month_end(last), window.end)))
+        start = _add_months(start, months)
+    return pieces
+
+
+def _add_months(day: date, months: int) -> date:
+    index = day.month - 1 + months
+    return date(day.year + index // 12, index % 12 + 1, 1)
+
+
+def _month_end(day: date) -> date:
+    return date(day.year, day.month, calendar.monthrange(day.year, day.month)[1])
+
+
+async def probe_window(client: TMDBClient, window: DiscoverWindow) -> int:
+    """How many films a window holds. Page one carries it, so a probe is one request."""
+    response = await client.discover(window.params(), page=1)
+    if not response.ok or response.payload is None:
+        raise ProviderUnavailable(
+            f"discover probe returned http {response.status}", provider="tmdb", retryable=True
+        )
+    return MoviePage.model_validate(response.payload).total_results
+
+
+def seed_windows(db: Database, windows: Sequence[DiscoverWindow], *, priority: int = 0) -> int:
+    """Queue page one of every planned window. Later pages queue themselves."""
+    added = 0
+    with db.write() as conn:
+        for window in windows:
+            added += enqueue_row(
+                conn,
+                "discover",
+                params={"discover": window.params().to_dict(), "page": 1},
+                priority=priority,
+            )
     return added
 
 

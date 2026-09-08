@@ -6,7 +6,7 @@ import gzip
 import json
 import zlib
 from collections.abc import Callable, Iterator
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -18,21 +18,26 @@ from pydantic import SecretStr
 
 from palate import clock
 from palate.db.connect import Database, open_database
+from palate.errors import DiscoverWindowTooLarge
 from palate.paths import migrations_dir
 from palate.providers.http import build_client
 from palate.tmdb.client import TMDBClient
 from palate.tmdb.crawl import (
     Crawler,
     CrawlQueue,
+    DiscoverWindow,
     compact,
     enqueue_row,
     load_raw,
+    plan_windows,
+    probe_window,
     record_member,
     renormalize,
     seed_discover,
     seed_export,
     seed_history,
     seed_onehop,
+    seed_windows,
     status,
     stub_film,
 )
@@ -369,6 +374,96 @@ def test_killing_the_workers_mid_flight_loses_nothing(db: Database) -> None:
     enriched = db.read().execute("select count(*) from films where detail_version > 0").fetchone()
     assert enriched[0] == 3
     assert db.read().execute("select count(*) from tmdb_raw").fetchone()[0] == 3
+
+
+def span(window: DiscoverWindow) -> str:
+    return f"{window.start} {window.end}"
+
+
+def probe_from(totals: dict[str, int], *, sparse: int = 120) -> Callable[[DiscoverWindow], int]:
+    """A probe answering from a table of spans, with everything else under the cap."""
+    return lambda window: totals.get(span(window), sparse)
+
+
+def test_a_year_under_the_ceiling_stays_one_window() -> None:
+    plan = plan_windows(since=1920, until=1922, probe=probe_from({}))
+    assert [span(w) for w in plan] == [
+        "1920-01-01 1920-12-31",
+        "1921-01-01 1921-12-31",
+        "1922-01-01 1922-12-31",
+    ]
+
+
+def test_a_year_over_the_ceiling_splits_into_quarters() -> None:
+    plan = plan_windows(since=1999, until=1999, probe=probe_from({"1999-01-01 1999-12-31": 24_000}))
+    assert [span(w) for w in plan] == [
+        "1999-01-01 1999-03-31",
+        "1999-04-01 1999-06-30",
+        "1999-07-01 1999-09-30",
+        "1999-10-01 1999-12-31",
+    ]
+
+
+def test_a_quarter_still_over_the_ceiling_splits_into_months() -> None:
+    totals = {"2019-01-01 2019-12-31": 41_000, "2019-07-01 2019-09-30": 12_000}
+    plan = plan_windows(since=2019, until=2019, probe=probe_from(totals))
+    assert [span(w) for w in plan] == [
+        "2019-01-01 2019-03-31",
+        "2019-04-01 2019-06-30",
+        "2019-07-01 2019-07-31",
+        "2019-08-01 2019-08-31",
+        "2019-09-01 2019-09-30",
+        "2019-10-01 2019-12-31",
+    ]
+
+
+def test_a_month_that_still_overflows_is_reported_not_truncated() -> None:
+    with pytest.raises(DiscoverWindowTooLarge, match="2020-01-01 to 2020-01-31") as raised:
+        plan_windows(since=2020, until=2020, probe=probe_from({}, sparse=11_000))
+    assert raised.value.total == 11_000
+
+
+def test_the_plan_stops_at_this_year_by_default() -> None:
+    with clock.frozen(START):
+        plan = plan_windows(since=2024, probe=probe_from({}))
+    assert [w.start.year for w in plan] == [2024, 2025, 2026]
+
+
+def test_a_window_carries_its_dates_into_the_discover_query() -> None:
+    window = DiscoverWindow(date(1979, 1, 1), date(1979, 12, 31), vote_count_gte=5)
+    query = window.params().as_query()
+    assert query["primary_release_date.gte"] == "1979-01-01"
+    assert query["primary_release_date.lte"] == "1979-12-31"
+    assert query["vote_count.gte"] == "5"
+    assert query["sort_by"] == "vote_count.desc"
+
+
+def test_the_probe_reads_total_results_off_page_one() -> None:
+    fake = FakeTMDB()
+
+    async def scenario() -> int:
+        async with build_client(transport=fake.transport()) as http:
+            window = DiscoverWindow(date(1999, 1, 1), date(1999, 12, 31), 5)
+            return await probe_window(TMDBClient(token=TOKEN, client=http), window)
+
+    assert anyio.run(scenario) == 5
+    assert len(fake.requests) == 1
+    assert fake.requests[0].url.params["primary_release_date.gte"] == "1999-01-01"
+
+
+def test_a_planned_window_becomes_a_queue_row_and_gets_crawled(db: Database) -> None:
+    plan = plan_windows(since=1999, until=1999, probe=probe_from({}), vote_count_gte=5)
+    assert seed_windows(db, plan) == 1
+    assert seed_windows(db, plan) == 0
+    queued = json.loads(queue_rows(db)[0]["params_json"])["discover"]
+    assert queued["primary_release_date_gte"] == "1999-01-01"
+    assert queued["vote_count_gte"] == 5
+    with clock.frozen(START):
+        report = run_crawl(db, FakeTMDB())
+    # Two pages of the window, four films that exist, one TMDB has dropped.
+    assert report.n_ok == 2 + 4
+    sources = {r["source"] for r in db.read().execute("select source from corpus_members")}
+    assert sources == {"discover"}
 
 
 def test_a_discover_sweep_queues_details_and_the_next_page(db: Database) -> None:

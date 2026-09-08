@@ -152,6 +152,17 @@ class TMDBNotFound(TMDBError):
     """TMDB has no such entity."""
 
 
+class DiscoverWindowTooLarge(TMDBError):
+    """A discover window is past the result ceiling and cannot be split any finer."""
+
+    def __init__(self, start: str, end: str, total: int, cap: int) -> None:
+        self.start = start
+        self.end = end
+        self.total = total
+        self.cap = cap
+        super().__init__(f"{start} to {end} holds {total} results, over the {cap} cap")
+
+
 class UnresolvedTitle(PalateError):
     """An export row could not be tied to a TMDB id."""
 
