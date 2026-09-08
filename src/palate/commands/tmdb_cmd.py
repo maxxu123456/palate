@@ -17,16 +17,17 @@ from palate.tmdb.client import TMDBClient
 from palate.tmdb.crawl import (
     Crawler,
     CrawlReport,
+    DiscoverWindow,
     compact,
+    probe_plan,
     renormalize,
-    seed_discover,
     seed_export,
     seed_history,
     seed_onehop,
+    seed_windows,
     status,
 )
 from palate.tmdb.limiter import AIMDLimiter
-from palate.tmdb.models import DiscoverParams
 
 console = Console()
 tmdb_app = typer.Typer(help="Fill the film corpus from TMDB.", no_args_is_help=True)
@@ -41,6 +42,23 @@ def open_db(settings: Settings) -> Database:
 def build_limiter(settings: Settings) -> AIMDLimiter:
     """One bucket shared by every worker in the process."""
     return AIMDLimiter(rate_per_s=settings.tmdb.rate_per_s, burst=settings.tmdb.burst)
+
+
+async def plan_discover(settings: Settings) -> list[DiscoverWindow]:
+    """Probe one window per release year, splitting whatever overflows the ceiling."""
+    token = require_secret(settings.tmdb.token_env)
+    async with client_session() as http:
+        client = TMDBClient(
+            token=token,
+            client=http,
+            limiter=build_limiter(settings),
+            language=settings.tmdb.language,
+        )
+        return await probe_plan(
+            client,
+            since=settings.tmdb.discover_since,
+            vote_count_gte=settings.tmdb.discover_vote_floor,
+        )
 
 
 async def drive(
@@ -71,7 +89,7 @@ def crawl(
     limit: int | None = typer.Option(None, help="Stop after this many queue rows."),
     concurrency: int | None = typer.Option(None, help="Workers, defaults to the config value."),
     history: bool = typer.Option(True, help="Seed every film in your own history."),
-    discover: bool = typer.Option(True, help="Seed a discover sweep for breadth."),
+    discover: bool = typer.Option(True, help="Plan and seed the discover windows."),
     onehop: bool = typer.Option(
         False, help="Seed recommendations and similar for top rated films."
     ),
@@ -89,7 +107,9 @@ def crawl(
             if history:
                 queued += seed_history(db)
             if discover:
-                queued += seed_discover(db, DiscoverParams(sort_by="popularity.desc"))
+                windows = anyio.run(partial(plan_discover, settings))
+                console.print(f"planned {len(windows)} discover windows")
+                queued += seed_windows(db, windows)
             if onehop:
                 queued += seed_onehop(db)
             if ids:
@@ -134,6 +154,8 @@ def show_status() -> None:
     if report.by_kind:
         waiting = ", ".join(f"{k} {n}" for k, n in sorted(report.by_kind.items()))
         console.print(f"waiting: {waiting}")
+    if report.n_windows:
+        console.print(f"{report.n_windows_done} of {report.n_windows} discover windows compelte")
     console.print(
         f"{report.n_films} films, {report.n_enriched} enriched, {report.n_corpus} in the corpus"
     )

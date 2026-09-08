@@ -30,10 +30,10 @@ from palate.tmdb.crawl import (
     enqueue_row,
     load_raw,
     plan_windows,
+    probe_plan,
     probe_window,
     record_member,
     renormalize,
-    seed_discover,
     seed_export,
     seed_history,
     seed_onehop,
@@ -42,7 +42,6 @@ from palate.tmdb.crawl import (
     stub_film,
 )
 from palate.tmdb.exports import export_url, iter_entries, latest_day, read_export
-from palate.tmdb.models import DiscoverParams
 from palate.tmdb.normalize import DETAIL_VERSION, normalize_movie
 
 FIXTURES = Path(__file__).parent / "fixtures" / "tmdb"
@@ -451,7 +450,23 @@ def test_the_probe_reads_total_results_off_page_one() -> None:
     assert fake.requests[0].url.params["primary_release_date.gte"] == "1999-01-01"
 
 
-def test_a_planned_window_becomes_a_queue_row_and_gets_crawled(db: Database) -> None:
+def test_the_live_plan_probes_one_request_per_window() -> None:
+    fake = FakeTMDB()
+
+    async def scenario() -> list[DiscoverWindow]:
+        async with build_client(transport=fake.transport()) as http:
+            client = TMDBClient(token=TOKEN, client=http)
+            return await probe_plan(client, since=1924, vote_count_gte=1)
+
+    with clock.frozen(START):
+        plan = anyio.run(scenario)
+    # Every year from 1924 to the year the clock says, and the fixture never overflows.
+    assert [w.start.year for w in plan] == list(range(1924, 2027))
+    assert len(fake.requests) == len(plan)
+    assert fake.requests[0].url.params["vote_count.gte"] == "1"
+
+
+def test_a_planned_window_queues_details_and_the_next_page(db: Database) -> None:
     plan = plan_windows(since=1999, until=1999, probe=probe_from({}), vote_count_gte=5)
     assert seed_windows(db, plan) == 1
     assert seed_windows(db, plan) == 0
@@ -460,17 +475,7 @@ def test_a_planned_window_becomes_a_queue_row_and_gets_crawled(db: Database) -> 
     assert queued["vote_count_gte"] == 5
     with clock.frozen(START):
         report = run_crawl(db, FakeTMDB())
-    # Two pages of the window, four films that exist, one TMDB has dropped.
-    assert report.n_ok == 2 + 4
-    sources = {r["source"] for r in db.read().execute("select source from corpus_members")}
-    assert sources == {"discover"}
-
-
-def test_a_discover_sweep_queues_details_and_the_next_page(db: Database) -> None:
-    assert seed_discover(db, DiscoverParams()) == 1
-    with clock.frozen(START):
-        report = run_crawl(db, FakeTMDB())
-    # Two discover pages, four films that exist, one that TMDB has dropped.
+    # Two pages of the window, four films that exist, one that TMDB has dropped.
     assert report.n_ok == 2 + 4
     assert report.n_dead == 1
     members = (
@@ -486,6 +491,9 @@ def test_a_discover_sweep_queues_details_and_the_next_page(db: Database) -> None
     kinds = {row["kind"] for row in queue_rows(db)}
     assert kinds == {"discover", "detail"}
     assert all(row["state"] in ("done", "dead") for row in queue_rows(db))
+    # The window is one row, whatever it takes to page it.
+    counted = status(db)
+    assert (counted.n_windows, counted.n_windows_done) == (1, 1)
 
 
 def test_onehop_brings_in_neighbours_of_the_top_rated(db: Database) -> None:

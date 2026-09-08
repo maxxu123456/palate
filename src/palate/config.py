@@ -106,6 +106,9 @@ class TMDBSettings(BaseModel):
     lease_s: int = 120
     language: str = "en-US"
     corpus_target: int = 40_000
+    discover_since: int = 1920
+    # Zero vote films are never eligible, and dropping them keeps the windows wide.
+    discover_vote_floor: int = 1
 
 
 class TraceSettings(BaseModel):

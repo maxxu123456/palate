@@ -8,6 +8,7 @@ import zlib
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date
+from functools import partial
 from typing import Any
 
 import anyio
@@ -88,6 +89,8 @@ class CrawlStatus:
 
     queue: dict[str, int]
     by_kind: dict[str, int]
+    n_windows: int
+    n_windows_done: int
     n_films: int
     n_enriched: int
     n_corpus: int
@@ -377,6 +380,23 @@ async def probe_window(client: TMDBClient, window: DiscoverWindow) -> int:
     return MoviePage.model_validate(response.payload).total_results
 
 
+async def probe_plan(
+    client: TMDBClient,
+    *,
+    since: int = 1920,
+    vote_count_gte: int = 0,
+) -> list[DiscoverWindow]:
+    """The plan for a live crawl. The planner is synchronous, so it runs off the loop."""
+    return await anyio.to_thread.run_sync(
+        partial(
+            plan_windows,
+            probe=lambda window: anyio.from_thread.run(probe_window, client, window),
+            since=since,
+            vote_count_gte=vote_count_gte,
+        )
+    )
+
+
 def seed_windows(db: Database, windows: Sequence[DiscoverWindow], *, priority: int = 0) -> int:
     """Queue page one of every planned window. Later pages queue themselves."""
     added = 0
@@ -389,17 +409,6 @@ def seed_windows(db: Database, windows: Sequence[DiscoverWindow], *, priority: i
                 priority=priority,
             )
     return added
-
-
-def seed_discover(db: Database, params: DiscoverParams, *, priority: int = 0) -> int:
-    """Queue page one of a discover sweep. Later pages queue themselves."""
-    with db.write() as conn:
-        return enqueue_row(
-            conn,
-            "discover",
-            params={"discover": params.to_dict(), "page": 1},
-            priority=priority,
-        )
 
 
 def seed_export(db: Database, *, day: str | None = None, priority: int = -5) -> int:
@@ -731,6 +740,12 @@ def status(db: Database, *, runs: int = 5) -> CrawlStatus:
             "group by kind"
         )
     }
+    # Page one of a window is the window, later pages are the same query continued.
+    windows = conn.execute(
+        "select count(*) as n_windows, coalesce(sum(state = 'done'), 0) as n_done "
+        "from crawl_queue where kind = 'discover' "
+        "and json_extract(params_json, '$.page') = 1"
+    ).fetchone()
     counts = conn.execute(
         "select (select count(*) from films) as n_films, "
         "(select count(*) from films where detail_version > 0) as n_enriched, "
@@ -746,6 +761,8 @@ def status(db: Database, *, runs: int = 5) -> CrawlStatus:
     return CrawlStatus(
         queue=queue,
         by_kind=by_kind,
+        n_windows=int(windows["n_windows"]),
+        n_windows_done=int(windows["n_done"]),
         n_films=int(counts["n_films"]),
         n_enriched=int(counts["n_enriched"]),
         n_corpus=int(counts["n_corpus"]),

@@ -60,15 +60,16 @@ the only state, so killing it and rerunning finishes the set rather than startin
 again. Requests are paced at twenty per second and back off on a 429. Every raw
 payload is kept zlib compressed, about 200 MB for forty thousand films, so
 `palate tmdb renormalize` can rebuild every derived row in a minute without
-touching the API.
+touching the API. The discover sweep is planned as one window per release year,
+cut into quarters and then months where a year holds more than the ten thousand
+results a single query can return.
 
 ## What does not work yet
 
 Corpus eligibility is not applied yet, so every crawled film counts as a member.
-The discover sweep pages a single popularity query, which cannot reach forty
-thousand films on its own. The embedding index, the taste model, the agent and
-the evaluation harness are not built, and the CLI so far is `palate ingest`,
-`palate tmdb` and `palate version`.
+The embedding index, the taste model, the agent and the evaluation harness are
+not built, and the CLI so far is `palate ingest`, `palate tmdb` and
+`palate version`.
 
 ## License
 
