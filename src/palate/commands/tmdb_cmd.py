@@ -155,7 +155,7 @@ def show_status() -> None:
         waiting = ", ".join(f"{k} {n}" for k, n in sorted(report.by_kind.items()))
         console.print(f"waiting: {waiting}")
     if report.n_windows:
-        console.print(f"{report.n_windows_done} of {report.n_windows} discover windows compelte")
+        console.print(f"{report.n_windows_done} of {report.n_windows} discover windows complete")
     console.print(
         f"{report.n_films} films, {report.n_enriched} enriched, {report.n_corpus} in the corpus"
     )
