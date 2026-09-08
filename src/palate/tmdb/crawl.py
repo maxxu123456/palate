@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 import zlib
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -30,7 +30,6 @@ BACKOFF_CAP_S = 300.0
 DISCOVER_PAGE_CAP = 500
 
 RAW_LEVEL = 6
-KINDS = ("discover", "detail", "onehop", "export")
 
 
 @dataclass(frozen=True, slots=True)
@@ -339,11 +338,6 @@ class Crawler:
         self._not_modified = 0
         self._err = 0
         self._dead = 0
-
-    @property
-    def queue(self) -> CrawlQueue:
-        """The queue this crawler drains."""
-        return self._queue
 
     async def run(self) -> CrawlReport:
         """Drain the queue with the configured number of workers."""
@@ -664,12 +658,3 @@ def status(db: Database, *, runs: int = 5) -> CrawlStatus:
             for r in recent
         ),
     )
-
-
-def reclaimable(db: Database, *, at: float | None = None) -> Sequence[int]:
-    """Lease ids whose holder is gone, which the next run picks up on its own."""
-    now = clock.now().timestamp() if at is None else at
-    rows = db.read().execute(
-        "select id from crawl_queue where state = 'leased' and lease_until <= ?", (now,)
-    )
-    return [int(r["id"]) for r in rows]

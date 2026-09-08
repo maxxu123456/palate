@@ -101,6 +101,7 @@ def test_the_rate_floors_instead_of_halving_to_nothing() -> None:
 
 def test_successes_climb_back_to_the_configured_rate() -> None:
     limiter, _ = make(rate=20.0, burst=20, recover_per_s=0.5, recover_every=4)
+    assert limiter.configured_rate == 20.0
     limiter.penalise(retry_after=None)
     assert limiter.current_rate == 10.0
     for _ in range(4):

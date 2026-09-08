@@ -36,7 +36,7 @@ from palate.tmdb.crawl import (
     status,
     stub_film,
 )
-from palate.tmdb.exports import export_url, iter_entries, latest_day
+from palate.tmdb.exports import export_url, iter_entries, latest_day, read_export
 from palate.tmdb.models import DiscoverParams
 from palate.tmdb.normalize import DETAIL_VERSION, normalize_movie
 
@@ -157,6 +157,8 @@ def test_the_same_work_is_only_queued_once(db: Database) -> None:
 def test_a_lease_is_exclusive_until_it_expires(db: Database) -> None:
     queue = CrawlQueue(db, lease_s=120)
     queue.enqueue("detail", tmdb_id=603)
+    assert queue.pending() == 1
+    assert queue.histogram() == {"pending": 1}
     with db.write() as conn:
         conn.execute(
             "insert into crawl_runs (run_id, kind, started_at, status) "
@@ -168,6 +170,7 @@ def test_a_lease_is_exclusive_until_it_expires(db: Database) -> None:
         assert queue.lease("run_a", 5) == []
         assert queue_rows(db)[0]["state"] == "leased"
         assert queue_rows(db)[0]["attempts"] == 1
+        assert queue.pending() == 1
     # A killed worker leaves the lease behind and the next run reclaims it.
     with clock.frozen(START + timedelta(seconds=300)):
         reclaimed = queue.lease("run_a", 5)
@@ -205,6 +208,12 @@ def test_a_detail_crawl_fills_films_people_and_credits(db: Database) -> None:
     countries = db.read().execute("select iso_3166_1 from film_countries where tmdb_id = 1398")
     assert [r["iso_3166_1"] for r in countries] == ["SU"]
     assert queue_rows(db)[0]["state"] == "done"
+
+
+def test_both_directors_survive_normalisation() -> None:
+    film = normalize_movie(payload("movie_603_matrix.json"))
+    assert len(film.director_ids) == 2
+    assert film.primary_region == "US"
 
 
 def test_a_co_directed_film_keeps_both_directors(db: Database) -> None:
@@ -431,9 +440,12 @@ def test_the_export_filename_follows_tmdb_and_waits_for_publication() -> None:
     assert latest_day(datetime(2026, 9, 7, 3, 0, tzinfo=UTC)) == "2026-09-06"
 
 
-def test_the_export_reader_reads_gzipped_lines() -> None:
+def test_the_export_reader_reads_gzipped_lines(tmp_path: Path) -> None:
     body = gzip.compress(b'{"id": 5, "original_title": "Five", "popularity": 1.5}\n\n')
     assert [e.tmdb_id for e in iter_entries(body)] == [5]
+    dump = tmp_path / "movie_ids_09_06_2026.json.gz"
+    dump.write_bytes(body)
+    assert [e.original_title for e in read_export(dump)] == ["Five"]
 
 
 def test_raw_payloads_survive_a_renormalize(db: Database) -> None:
