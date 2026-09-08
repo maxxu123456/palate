@@ -26,11 +26,18 @@ For a hosted model instead, set `provider = "openrouter"` and put the key name i
 Together, Groq). Secrets never go in the config file, only the name of the
 environment variable that holds them.
 
-Then export your Letterboxd data (Settings, Data, Export your data) and import it:
+A TMDB v4 read token goes in `TMDB_READ_TOKEN`. Without it titles resolve only
+from Letterboxd URIs that already carry a TMDB id, and there is nothing to crawl
+with.
+
+Then export your Letterboxd data (Settings, Data, Export your data), import it,
+and fill the corpus:
 
 ```sh
 palate ingest ~/Downloads/letterboxd-2026-09-14.zip
 palate ingest review
+palate tmdb crawl
+palate tmdb status
 ```
 
 ## Configuration
@@ -48,13 +55,20 @@ matched to a TMDB id are kept in `unmatched_export_row` with a reason, because
 dropping them quietly would bias every later measurement toward mainstream
 titles.
 
+`palate tmdb crawl` fills `films`, `people` and `credits` from TMDB. The queue is
+the only state, so killing it and rerunning finishes the set rather than starting
+again. Requests are paced at twenty per second and back off on a 429. Every raw
+payload is kept zlib compressed, about 200 MB for forty thousand films, so
+`palate tmdb renormalize` can rebuild every derived row in a minute without
+touching the API.
+
 ## What does not work yet
 
-Title resolution needs a TMDB search backend and there is not one wired in, so a
-fresh import resolves only the URIs that already carry a TMDB id and queues the
-rest for review. The corpus crawl, the embedding index, the taste model, the
-agent and the evaluation harness are not built, and the CLI so far is only
-`palate ingest` and `palate version`.
+Corpus eligibility is not applied yet, so every crawled film counts as a member.
+The discover sweep pages a single popularity query, which cannot reach forty
+thousand films on its own. The embedding index, the taste model, the agent and
+the evaluation harness are not built, and the CLI so far is `palate ingest`,
+`palate tmdb` and `palate version`.
 
 ## License
 

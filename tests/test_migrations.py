@@ -34,9 +34,9 @@ def schema_text(conn: sqlite3.Connection) -> list[tuple[str, str, str]]:
 
 def test_discover_orders_and_hashes() -> None:
     found = discover(MIGRATIONS)
-    assert [m.version for m in found] == [1, 2, 3]
-    assert [m.name for m in found] == ["raw", "core", "user"]
-    assert len({m.checksum for m in found}) == 3
+    assert [m.version for m in found] == [1, 2, 3, 4]
+    assert [m.name for m in found] == ["raw", "core", "user", "corpus"]
+    assert len({m.checksum for m in found}) == 4
     assert all(len(m.checksum) == 64 for m in found)
 
 
@@ -56,10 +56,11 @@ def test_discover_rejects_a_bad_filename(tmp_path: Path) -> None:
 def test_migrate_creates_every_table(tmp_path: Path) -> None:
     db = make_db(tmp_path)
     report = migrate(db, MIGRATIONS)
-    assert report.applied == (1, 2, 3)
-    assert report.version == 3
+    assert report.applied == (1, 2, 3, 4)
+    assert report.version == 4
     names = table_names(db.read())
     assert {"films", "credits", "user_films", "title_resolutions", "tmdb_raw"} <= names
+    assert {"corpus_members", "crawl_runs", "crawl_queue"} <= names
     db.close()
 
 
@@ -69,7 +70,7 @@ def test_migrate_twice_is_a_no_op(tmp_path: Path) -> None:
     first = schema_text(db.read())
     report = migrate(db, MIGRATIONS)
     assert report.applied == ()
-    assert report.already == (1, 2, 3)
+    assert report.already == (1, 2, 3, 4)
     assert schema_text(db.read()) == first
     db.close()
 
@@ -78,7 +79,7 @@ def test_applying_a_prefix_then_the_rest_matches_applying_all(tmp_path: Path) ->
     stepped = make_db(tmp_path, "stepped.db")
     migrate(stepped, MIGRATIONS, target=1)
     assert current_version(stepped.read()) == 1
-    migrate(stepped, MIGRATIONS, target=2)
+    migrate(stepped, MIGRATIONS, target=3)
     migrate(stepped, MIGRATIONS)
     whole = make_db(tmp_path, "whole.db")
     migrate(whole, MIGRATIONS)
@@ -174,7 +175,7 @@ def test_ensure_migrated_runs_once(tmp_path: Path) -> None:
     db.ensure_migrated()
     db.ensure_migrated()
     rows = applied(db.read())
-    assert sorted(rows) == [1, 2, 3]
+    assert sorted(rows) == [1, 2, 3, 4]
     db.close()
 
 

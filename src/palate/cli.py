@@ -3,7 +3,7 @@
 import typer
 
 from palate import __version__
-from palate.commands import ingest_cmd
+from palate.commands import ingest_cmd, tmdb_cmd
 
 app = typer.Typer(
     name="palate",
@@ -26,3 +26,4 @@ def version() -> None:
 
 
 ingest_cmd.register(app)
+tmdb_cmd.register(app)

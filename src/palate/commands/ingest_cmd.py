@@ -11,17 +11,19 @@ from rich.table import Table
 
 from palate import paths
 from palate.clock import now_iso
-from palate.config import load_settings
+from palate.config import Settings, load_settings, resolve_secret
 from palate.db.connect import Database, open_database
 from palate.ingest.letterboxd import ImportReport, import_export
 from palate.ingest.resolve import record_manual
+from palate.tmdb.client import TMDBTitleSearch
+from palate.tmdb.limiter import AIMDLimiter
 
 console = Console()
 
 
-def open_db() -> Database:
+def open_db(settings: Settings | None = None) -> Database:
     """Open the configured palate.db with migrations applied."""
-    settings = load_settings()
+    settings = settings or load_settings()
     resolved = paths.resolve(settings.home, offline=settings.offline)
     return open_database(resolved.db, migrations=paths.migrations_dir())
 
@@ -30,9 +32,18 @@ def run_import(export: Path) -> ImportReport:
     """Import an export zip and print what landed."""
     if not export.is_file():
         raise typer.BadParameter(f"no such export: {export}")
-    db = open_db()
+    settings = load_settings()
+    token = resolve_secret(settings.tmdb.token_env)
+    db = open_db(settings)
     try:
-        report = import_export(db, export)
+        if token is None:
+            # No token means only URIs that already carry a TMDB id resolve.
+            console.print(f"{settings.tmdb.token_env} is not set, resolving from URIs only")
+            report = import_export(db, export)
+        else:
+            limiter = AIMDLimiter(rate_per_s=settings.tmdb.rate_per_s, burst=settings.tmdb.burst)
+            with TMDBTitleSearch(token, language=settings.tmdb.language, limiter=limiter) as search:
+                report = import_export(db, export, search=search)
     finally:
         db.close()
     console.print(
