@@ -95,6 +95,17 @@ class ModelNotFound(ProviderError):
         super().__init__(message, provider=provider, model=model, retryable=False)
 
 
+class MissingModel(PalateError):
+    """A pinned Hub model is not in the local cache and offline mode forbids fetching it."""
+
+    def __init__(self, alias: str, repo_id: str, revision: str) -> None:
+        self.alias = alias
+        self.repo_id = repo_id
+        self.revision = revision
+        self.pull_hint = f"palate models pull {alias}"
+        super().__init__(f"{repo_id}@{revision[:8]} is not cached. Run: {self.pull_hint}")
+
+
 class IndexingError(PalateError):
     """Something is wrong with an embedding index."""
 

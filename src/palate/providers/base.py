@@ -6,6 +6,8 @@ from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, runtime_checkable
 
+from palate.providers.fingerprint import EmbeddingFingerprint
+
 type Role = Literal["system", "user", "assistant", "tool"]
 type FinishReason = Literal["stop", "length", "tool_calls", "content_filter", "error"]
 type ToolChoice = Literal["auto", "none", "required"] | tuple[Literal["tool"], str]
@@ -195,5 +197,39 @@ class ChatProvider(Protocol):
     def count_tokens(
         self, messages: Sequence[Message], tools: Sequence[ToolSchema] = ()
     ) -> int: ...
+
+    async def aclose(self) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class EmbeddingBatch:
+    """One batch of vectors, always carrying the space they belong to."""
+
+    vectors: tuple[Vector, ...]
+    fingerprint: EmbeddingFingerprint
+    input_tokens: int | None = None
+    latency_ms: float = 0.0
+    cache_hits: int = 0
+
+
+@runtime_checkable
+class Embedder(Protocol):
+    """Anything that turns text into vectors, in one declared space."""
+
+    provider: str
+    max_batch: int
+
+    @property
+    def fingerprint(self) -> EmbeddingFingerprint: ...
+
+    async def ready(self) -> EmbeddingFingerprint: ...
+
+    async def embed_documents(
+        self, texts: Sequence[str], *, span: SpanLike | None = None
+    ) -> EmbeddingBatch: ...
+
+    async def embed_query(self, text: str, *, span: SpanLike | None = None) -> Vector: ...
+
+    async def health(self) -> ProviderHealth: ...
 
     async def aclose(self) -> None: ...

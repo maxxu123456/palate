@@ -6,13 +6,19 @@ import httpx
 
 from palate.config import Settings, require_secret, resolve_secret
 from palate.errors import ConfigError
-from palate.providers.base import ChatProvider
+from palate.hf.models import pin
+from palate.providers.base import ChatProvider, Embedder
 from palate.providers.chat.fake import FakeChatProvider, ScriptedTurn
 from palate.providers.chat.hf_inference import HFInferenceChat
 from palate.providers.chat.ollama import BASE_URL as OLLAMA_URL
 from palate.providers.chat.ollama import OllamaChat
 from palate.providers.chat.openai_compat import OpenAICompatChat
 from palate.providers.chat.openrouter import OpenRouterChat
+from palate.providers.embed.fake import FakeEmbedder
+from palate.providers.embed.hf_inference import HFInferenceEmbedder
+from palate.providers.embed.ollama import BASE_URL as OLLAMA_EMBED_URL
+from palate.providers.embed.ollama import OllamaEmbedder
+from palate.providers.embed.openai_compat import OpenAICompatEmbedder
 
 # What `palate doctor` gets when the config says fake, so the wiring is still exercised.
 FAKE_REPLY = "the fake provider is selected, so no model was called"
@@ -59,3 +65,43 @@ def build_chat(settings: Settings, *, client: httpx.AsyncClient) -> ChatProvider
             timeout_s=chat.timeout_s,
         )
     return FakeChatProvider([ScriptedTurn(text=FAKE_REPLY)], loop_last=True, model=chat.model)
+
+
+def build_embedder(settings: Settings, *, client: httpx.AsyncClient) -> Embedder:
+    """Build the configured embedding provider, which is never the chat provider."""
+    embed = settings.embed
+    if embed.provider == "ollama":
+        return OllamaEmbedder(
+            model=embed.model,
+            client=client,
+            base_url=embed.base_url or OLLAMA_EMBED_URL,
+            max_batch=embed.batch_size,
+        )
+    if embed.provider == "sentence_transformers":
+        # Imported here so the base install never touches torch by loading this module.
+        from palate.providers.embed.sentence_transformers import SentenceTransformersEmbedder
+
+        return SentenceTransformersEmbedder(
+            pin=pin(embed.model),
+            device=embed.device,
+            batch_size=embed.batch_size,
+            truncate_dim=embed.truncate_dim,
+        )
+    if embed.provider == "openai_compat":
+        if not embed.base_url:
+            raise ConfigError("embed.base_url is required when embed.provider is openai_compat")
+        return OpenAICompatEmbedder(
+            base_url=embed.base_url,
+            model=embed.model,
+            client=client,
+            api_key=resolve_secret(embed.api_key_env),
+            max_batch=embed.batch_size,
+            truncate_dim=embed.truncate_dim,
+        )
+    if embed.provider == "hf_inference":
+        return HFInferenceEmbedder(
+            model=embed.model,
+            api_key=resolve_secret(embed.api_key_env) or resolve_secret("HF_TOKEN"),
+            max_batch=embed.batch_size,
+        )
+    return FakeEmbedder(max_batch=embed.batch_size)

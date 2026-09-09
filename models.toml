@@ -1,0 +1,26 @@
+# Hub models, pinned by commit sha. A branch name is not a pin: "main" moves and a
+# moved revision silently invalidates every index built from it.
+#
+# revision is empty until `palate models pull <alias>` resolves and writes one, so a
+# fresh clone cannot accidentally embed against whatever the Hub is serving today.
+
+[embeddinggemma]
+kind = "embedding"
+repo_id = "google/embeddinggemma-300m"
+revision = ""
+dim = 768
+pooling = "mean"
+normalized = true
+# Asymmetric. Embedding the corpus with the query prefix degrades everything silently.
+query_prompt = "task: search result | query: "
+document_prompt = "title: none | text: "
+
+[minilm]
+kind = "reranker"
+repo_id = "cross-encoder/ms-marco-MiniLM-L6-v2"
+revision = ""
+
+[bge-reranker]
+kind = "reranker"
+repo_id = "BAAI/bge-reranker-v2-m3"
+revision = ""
