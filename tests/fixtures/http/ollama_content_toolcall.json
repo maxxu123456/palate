@@ -1,0 +1,17 @@
+{
+  "note": "a small local model that writes the call into the content instead",
+  "response": {
+    "status": 200,
+    "json": {
+      "model": "qwen3:8b",
+      "message": {
+        "role": "assistant",
+        "content": "I will look that up.\n<tool_call>\n{\"name\": \"search_films\", \"arguments\": {\"query\": \"slow and cold\"}}\n</tool_call>"
+      },
+      "done": true,
+      "done_reason": "stop",
+      "prompt_eval_count": 402,
+      "eval_count": 44
+    }
+  }
+}

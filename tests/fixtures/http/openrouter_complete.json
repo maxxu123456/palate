@@ -1,0 +1,35 @@
+{
+  "note": "usage.include makes the reply carry real billed dollars, key scrubbed",
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/chat/completions",
+    "headers": {
+      "HTTP-Referer": "https://github.com/maxxu123456/palate",
+      "X-Title": "palate"
+    },
+    "json": {
+      "model": "qwen/qwen3-30b-a3b",
+      "messages": [{"role": "user", "content": "name one slow film"}],
+      "temperature": 0.2,
+      "stream": false,
+      "usage": {"include": true},
+      "provider": {"order": ["deepinfra"], "allow_fallbacks": false}
+    }
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "id": "gen-1757347200-abc",
+      "model": "qwen/qwen3-30b-a3b",
+      "provider": "DeepInfra",
+      "choices": [
+        {
+          "index": 0,
+          "message": {"role": "assistant", "content": "Stalker."},
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {"prompt_tokens": 19, "completion_tokens": 4, "cost": 0.0000138}
+    }
+  }
+}
