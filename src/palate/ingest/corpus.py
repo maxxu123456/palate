@@ -29,14 +29,18 @@ def vote_floor(year: int | None, region: str | None) -> int:
 
 @dataclass(frozen=True, slots=True)
 class FilmRow:
-    """The film columns eligibility actually reads."""
+    """One films row, as far as anything outside SQL needs it."""
 
     tmdb_id: int
+    title: str = ""
     year: int | None = None
     runtime: int | None = None
     vote_count: int = 0
     adult: bool = False
     status: str | None = None
+    overview: str | None = None
+    tagline: str | None = None
+    original_language: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,0 +1,27 @@
+# 1398 full 8408bd9637077de6
+Stalker (1979). Directed by Andrei Tarkovsky.
+Cast: Alexander Kaidanovsky, Anatoliy Solonitsyn, Nikolai Grinko, Alisa Freyndlikh.
+Genres: Drama, Science Fiction. Country: Soviet Union. Language: Russian. 162 minutes.
+Keywords: based on novel or book, coming of age, dystopia, existentialism, meaning of life, philosophy.
+Tagline: none.
+A guide leads two men through an area known as the Zone to find a room that grants wishes.
+
+# 603 full ff3c801f4021ef57
+The Matrix (1999). Directed by Lana Wachowski, Lilly Wachowski.
+Cast: Keanu Reeves, Laurence Fishburne, Carrie-Anne Moss, Hugo Weaving, Joe Pantoliano.
+Genres: Action, Science Fiction. Country: Australia, United States of America. Language: English. 136 minutes.
+Keywords: artificial intelligence, cyberpunk, dystopia, future, philosophy, saving the world, virtual reality.
+Tagline: Welcome to the Real World.
+Set in the 22nd century, The Matrix tells the story of a computer hacker who joins a group of underground insurgents fighting the vast and powerful computers who now rule the earth.
+
+# 11104 full d92e82b31532203c
+Chungking Express (1994). Directed by Wong Kar-wai.
+Cast: Brigitte Lin, Takeshi Kaneshiro, Tony Leung Chiu-wai, Faye Wong.
+Genres: Comedy, Drama, Romance. Country: Hong Kong. Language: Cantonese, Mandarin. 102 minutes.
+Keywords: hong kong, loneliness, unrequited love.
+Tagline: none.
+Two melancholy Hong Kong policemen fall in love: one with a mysterious female underworld figure, the other with a beautiful woman working at a late-night restaurant.
+
+# 802 minimal 68ac2f6b996bd939
+The Bear (1970).
+Genres: Horror. Country: Poland. Language: Polish. 99 minutes.
