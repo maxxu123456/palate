@@ -72,6 +72,7 @@ def install_index(
     dim = len(next(iter(world.vectors.values())))
     mark = fingerprint(dim=dim, revision=revision)
     table = table_name(mark.key)
+    watched = _watched(db)
     with db.write() as conn:
         row = mark.to_row()
         conn.execute(
@@ -110,6 +111,7 @@ def install_index(
                     runtime=film.runtime,
                     vote_count=film.vote_count,
                     original_language=film.language,
+                    is_watched=int(film.tmdb_id in watched),
                 )
                 for film in world.films
             ]
@@ -117,6 +119,15 @@ def install_index(
         if activate:
             point_at(conn, mark.key)
     return mark.key
+
+
+def _watched(db: Database) -> set[int]:
+    """Whatever history is already loaded, so the vec0 column is not a lie."""
+    rows = db.read().execute(
+        "select tmdb_id from user_films where rating_half is not null "
+        "or watched_date is not null or logged_date is not null"
+    )
+    return {int(r["tmdb_id"]) for r in rows}
 
 
 def _films(db: Database, world: SynthWorld) -> None:
