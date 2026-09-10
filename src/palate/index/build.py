@@ -14,7 +14,7 @@ from palate.db.sqlvec import serialize_f32
 from palate.errors import IndexIncomplete
 from palate.index.fts import target_ids
 from palate.index.vecstore import VecRow, VecStore
-from palate.index.verify import VerifyReport, table_name, verify
+from palate.index.verify import VerifyReport, point_at, table_name, verify
 from palate.providers.base import EmbeddingProvider, Vector
 from palate.providers.fingerprint import CANARY_TEXT, EmbeddingFingerprint, unpack_f32
 
@@ -286,9 +286,5 @@ def _finish(
             (now_iso(), report.n_present, index_id),
         )
         if activate:
-            conn.execute(
-                "insert into active_index (only_row, index_id) values (1, ?) "
-                "on conflict(only_row) do update set index_id = excluded.index_id",
-                (index_id,),
-            )
+            point_at(conn, index_id)
     return activate

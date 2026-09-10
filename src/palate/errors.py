@@ -143,6 +143,10 @@ class StaleArtifact(IndexingError):
         super().__init__(f"{kind} {artifact_id} was built for {built_for}, active is {active}")
 
 
+class PreferenceRefused(PalateError):
+    """A stated preference was not written, carrying the reason to relay to the user."""
+
+
 class StorageError(PalateError):
     """SQLite refused to cooperate."""
 

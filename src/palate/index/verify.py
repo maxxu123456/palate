@@ -119,6 +119,27 @@ async def drift(record: IndexRecord, embedder: EmbeddingProvider) -> str:
     return mismatch_message(record.fingerprint, current)
 
 
+def mark_dependent_stale(conn: sqlite3.Connection, index_id: str) -> int:
+    """Flag every profile fitted in a different vector space. Stale rows are never deleted."""
+    cursor = conn.execute(
+        "update taste_profiles set stale = 1, "
+        "stale_reason = 'index_changed:' || index_id || '->' || ? "
+        "where index_id <> ? and stale = 0",
+        (index_id, index_id),
+    )
+    return int(cursor.rowcount)
+
+
+def point_at(conn: sqlite3.Connection, index_id: str) -> None:
+    """Flip the pointer and stale anything fitted elsewhere, in one transaction."""
+    conn.execute(
+        "insert into active_index (only_row, index_id) values (1, ?) "
+        "on conflict(only_row) do update set index_id = excluded.index_id",
+        (index_id,),
+    )
+    mark_dependent_stale(conn, index_id)
+
+
 def activate(db: Database, index_id: str) -> None:
     """Point queries at a built index. A building index is never served."""
     record = load(db, index_id)
@@ -127,11 +148,7 @@ def activate(db: Database, index_id: str) -> None:
     if record.status != "ready":
         raise NoActiveIndex(f"index {index_id} is {record.status}, not ready")
     with db.write() as conn:
-        conn.execute(
-            "insert into active_index (only_row, index_id) values (1, ?) "
-            "on conflict(only_row) do update set index_id = excluded.index_id",
-            (index_id,),
-        )
+        point_at(conn, index_id)
 
 
 def verify(db: Database, index_id: str) -> VerifyReport:

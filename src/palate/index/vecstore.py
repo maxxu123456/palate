@@ -10,6 +10,7 @@ from typing import Any, Literal
 import orjson
 
 from palate.db.sqlvec import serialize_f32
+from palate.providers.fingerprint import unpack_f32
 
 type PrefilterPath = Literal["allow_json", "exclude_json", "metadata_overfetch"]
 
@@ -155,6 +156,17 @@ class VecStore:
     def ids(self) -> set[int]:
         """Every film id in the table, for the orphan check."""
         return {int(r[0]) for r in self.conn.execute(f"select film_id from {self.table}")}
+
+    def vectors(self, film_ids: Sequence[int]) -> dict[int, tuple[float, ...]]:
+        """Stored vectors for these films, which is what anything fitted in this space needs."""
+        if not film_ids:
+            return {}
+        rows = self.conn.execute(
+            f"select film_id, embedding from {self.table} "
+            "where film_id in (select value from json_each(?))",
+            (orjson.dumps(list(film_ids)).decode(),),
+        )
+        return {int(r["film_id"]): unpack_f32(bytes(r["embedding"])) for r in rows}
 
     def upsert(self, rows: Sequence[VecRow]) -> None:
         """Replace these films' vectors. vec0 has no upsert, so a delete comes first."""
