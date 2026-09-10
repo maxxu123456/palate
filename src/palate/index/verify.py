@@ -9,7 +9,7 @@ from palate.db.connect import Database
 from palate.errors import NoActiveIndex
 from palate.index.fts import target_ids
 from palate.index.vecstore import VecStore
-from palate.providers.base import Embedder
+from palate.providers.base import EmbeddingProvider
 from palate.providers.fingerprint import EmbeddingFingerprint, mismatch_message, require_match
 
 TABLE_PREFIX = "vec_films_"
@@ -104,14 +104,14 @@ def active(db: Database) -> IndexRecord:
     return record
 
 
-def require_active_match(db: Database, embedder: Embedder) -> IndexRecord:
+def require_active_match(db: Database, embedder: EmbeddingProvider) -> IndexRecord:
     """The active index, checked against the current embedder once per open."""
     record = active(db)
     require_match(record.fingerprint, embedder.fingerprint)
     return record
 
 
-async def drift(record: IndexRecord, embedder: Embedder) -> str:
+async def drift(record: IndexRecord, embedder: EmbeddingProvider) -> str:
     """Empty when this embedder built the index, the mismatch report when it did not."""
     current = await embedder.ready()
     if current.key == record.fingerprint.key:

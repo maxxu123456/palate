@@ -14,7 +14,7 @@ from palate.hashing import short_hash
 from palate.index.documents import DOC_TEMPLATE_VERSION
 
 if TYPE_CHECKING:
-    from palate.providers.base import Embedder
+    from palate.providers.base import EmbeddingProvider
 
 # One sentence, re-embedded daily, to catch a host swapping weights behind a stable name.
 CANARY_TEXT = "a slow, cold film about memory and an empty room"
@@ -114,7 +114,7 @@ def cosine(left: Sequence[float], right: Sequence[float]) -> float:
 
 
 async def canary_check(
-    embedder: Embedder,
+    embedder: EmbeddingProvider,
     stored: bytes,
     *,
     tolerance: float = 0.999,

@@ -15,7 +15,7 @@ from palate.errors import IndexIncomplete
 from palate.index.fts import target_ids
 from palate.index.vecstore import VecRow, VecStore
 from palate.index.verify import VerifyReport, table_name, verify
-from palate.providers.base import Embedder, Vector
+from palate.providers.base import EmbeddingProvider, Vector
 from palate.providers.fingerprint import CANARY_TEXT, EmbeddingFingerprint, unpack_f32
 
 BATCH = 64
@@ -67,7 +67,7 @@ _META = (
 
 async def build(
     db: Database,
-    embedder: Embedder,
+    embedder: EmbeddingProvider,
     *,
     rebuild: bool = False,
     only_missing: bool = True,
@@ -184,7 +184,7 @@ def _metadata(conn: sqlite3.Connection, targets: Sequence[int]) -> dict[int, Vec
 
 
 async def _vectors(
-    db: Database, embedder: Embedder, index_id: str, chunk: Sequence[_Pending]
+    db: Database, embedder: EmbeddingProvider, index_id: str, chunk: Sequence[_Pending]
 ) -> tuple[list[Vector], int]:
     conn = db.read()
     cached: dict[str, Vector] = {}
@@ -253,7 +253,7 @@ def _persist(
         )
 
 
-async def _store_canary(db: Database, embedder: Embedder, index_id: str) -> None:
+async def _store_canary(db: Database, embedder: EmbeddingProvider, index_id: str) -> None:
     """The only thing that catches a remote host swapping weights under a stable name."""
     vector = await embedder.embed_query(CANARY_TEXT)
     with db.write() as conn:

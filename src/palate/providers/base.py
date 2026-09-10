@@ -213,7 +213,7 @@ class EmbeddingBatch:
 
 
 @runtime_checkable
-class Embedder(Protocol):
+class EmbeddingProvider(Protocol):
     """Anything that turns text into vectors, in one declared space."""
 
     provider: str

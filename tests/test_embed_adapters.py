@@ -12,7 +12,7 @@ import pytest
 from palate.config import Settings
 from palate.errors import ConfigError
 from palate.hf.models import BRANCHES, ModelSpec, load, pin
-from palate.providers.base import Embedder
+from palate.providers.base import EmbeddingProvider
 from palate.providers.embed.fake import FakeEmbedder
 from palate.providers.embed.hf_inference import HFInferenceEmbedder, pool
 from palate.providers.embed.ollama import OllamaEmbedder
@@ -225,7 +225,7 @@ def test_a_spec_only_counts_as_pinned_with_a_real_sha() -> None:
 async def test_the_registry_builds_the_configured_embedder() -> None:
     async with httpx.AsyncClient() as http:
         ollama = build_embedder(Settings(), client=http)
-        assert isinstance(ollama, Embedder)
+        assert isinstance(ollama, EmbeddingProvider)
         assert ollama.provider == "ollama"
         fake = build_embedder(Settings(embed={"provider": "fake"}), client=http)
         assert fake.provider == "fake"
@@ -235,11 +235,11 @@ async def test_the_registry_builds_the_configured_embedder() -> None:
 
 async def test_every_embedder_satisfies_the_protocol() -> None:
     async with httpx.AsyncClient() as http:
-        embedders: list[Embedder] = [
+        embedders: list[EmbeddingProvider] = [
             FakeEmbedder(),
             OllamaEmbedder(model="m", client=http),
             OpenAICompatEmbedder(base_url="http://x/v1", model="m", client=http),
             HFInferenceEmbedder(model="m", client=FakeFeatureClient([[0.0]])),
         ]
-        assert all(isinstance(e, Embedder) for e in embedders)
+        assert all(isinstance(e, EmbeddingProvider) for e in embedders)
         assert CANARY_TEXT

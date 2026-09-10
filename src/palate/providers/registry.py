@@ -7,7 +7,7 @@ import httpx
 from palate.config import Settings, require_secret, resolve_secret
 from palate.errors import ConfigError
 from palate.hf.models import pin
-from palate.providers.base import ChatProvider, Embedder
+from palate.providers.base import ChatProvider, EmbeddingProvider
 from palate.providers.chat.fake import FakeChatProvider, ScriptedTurn
 from palate.providers.chat.hf_inference import HFInferenceChat
 from palate.providers.chat.ollama import BASE_URL as OLLAMA_URL
@@ -67,7 +67,7 @@ def build_chat(settings: Settings, *, client: httpx.AsyncClient) -> ChatProvider
     return FakeChatProvider([ScriptedTurn(text=FAKE_REPLY)], loop_last=True, model=chat.model)
 
 
-def build_embedder(settings: Settings, *, client: httpx.AsyncClient) -> Embedder:
+def build_embedder(settings: Settings, *, client: httpx.AsyncClient) -> EmbeddingProvider:
     """Build the configured embedding provider, which is never the chat provider."""
     embed = settings.embed
     if embed.provider == "ollama":

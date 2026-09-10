@@ -19,7 +19,7 @@ from palate.errors import PalateError
 from palate.extras import have
 from palate.hf.models import load as load_models
 from palate.index import verify
-from palate.providers.base import Embedder
+from palate.providers.base import EmbeddingProvider
 from palate.providers.http import client_session
 from palate.providers.registry import build_chat, build_embedder
 
@@ -153,7 +153,7 @@ async def provider_checks(settings: Settings, db: Database) -> list[Check]:
             await embedder.aclose()
 
 
-async def fingerprint_check(db: Database, embedder: Embedder) -> Check:
+async def fingerprint_check(db: Database, embedder: EmbeddingProvider) -> Check:
     """The active index against the provider configured right now."""
     index_id = verify.active_id(db)
     record = None if index_id is None else verify.load(db, index_id)
