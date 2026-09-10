@@ -127,6 +127,13 @@ class FeatureMatrix:
         )
 
 
+def _empty() -> FeatureMatrix:
+    """A pool the filters emptied still has to answer every question about its columns."""
+    values = np.zeros((0, len(FEATURES)))
+    mask = np.zeros((0, len(FEATURES)), dtype=bool)
+    return FeatureMatrix(values, values, (), FEATURES, mask, ("zeroed",) * len(FEATURES))
+
+
 def _ranks(values: np.ndarray) -> np.ndarray:
     """Average ranks, so a column of one repeated value stays constant."""
     order = np.argsort(values, kind="stable")
@@ -237,6 +244,10 @@ def bm25_scores(pool: CandidatePool) -> dict[int, float]:
     }
 
 
+def _mode_dim(profile: TasteProfile) -> int:
+    return len(profile.modes[0].centroid) if profile.modes else 0
+
+
 def _table(profile: TasteProfile, kind: str, *, exposure: bool = False) -> dict[str, float]:
     rows = profile.affinities.get(kind, ())
     return {r.entity_id: (r.exposure_logodds if exposure else r.affinity) for r in rows}
@@ -264,6 +275,8 @@ def _fill_modes(
     rows: np.ndarray,
     seen: np.ndarray,
 ) -> None:
+    if rows.size == 0:
+        return
     if profile.modes:
         raw[:, at["mode_affinity"]] = mode_affinity(rows, profile.modes)
         support[:, at["mode_affinity"]] = seen
@@ -417,9 +430,9 @@ def _fill_channels(
             if tmdb_id in values:
                 raw[i, at[name]] = values[tmdb_id]
                 support[i, at[name]] = True
-    if inputs.query_embedding is None:
+    query = np.asarray(inputs.query_embedding or (), dtype=np.float64)
+    if query.size == 0 or rows.shape[1] != query.size:
         return
-    query = np.asarray(inputs.query_embedding, dtype=np.float64)
     scale = float(np.linalg.norm(query)) or 1.0
     norms = np.linalg.norm(rows, axis=1)
     raw[:, at["query_sim"]] = (rows @ query) / (scale * np.where(norms > 0.0, norms, 1.0))
@@ -437,11 +450,13 @@ def build_matrix(
     """Every feature for every candidate, scaled inside this pool and nowhere else."""
     known = load_facets(conn, ids)
     kept = tuple(i for i in ids if i in known)
+    if not kept:
+        return _empty()
     facets = [known[i] for i in kept]
     at = {name: i for i, name in enumerate(FEATURES)}
     raw = np.zeros((len(kept), len(FEATURES)))
     support = np.zeros((len(kept), len(FEATURES)), dtype=bool)
-    dim = len(next(iter(inputs.vectors.values()), ()))
+    dim = len(next(iter(inputs.vectors.values()), ())) or _mode_dim(profile)
     rows = _matrix(inputs.vectors, kept, dim)
     seen = np.array([i in inputs.vectors for i in kept], dtype=bool)
     _fill_modes(raw, support, at, profile, rows, seen)

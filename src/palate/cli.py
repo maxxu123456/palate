@@ -3,7 +3,14 @@
 import typer
 
 from palate import __version__
-from palate.commands import doctor, index_cmd, ingest_cmd, profile_cmd, tmdb_cmd
+from palate.commands import (
+    doctor,
+    index_cmd,
+    ingest_cmd,
+    profile_cmd,
+    recommend_cmd,
+    tmdb_cmd,
+)
 
 app = typer.Typer(
     name="palate",
@@ -30,3 +37,4 @@ ingest_cmd.register(app)
 tmdb_cmd.register(app)
 index_cmd.register(app)
 profile_cmd.register(app)
+recommend_cmd.register(app)
