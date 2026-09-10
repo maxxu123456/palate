@@ -173,3 +173,26 @@ def test_l_the_path_matches_the_allow_set_size(tmp_path: Path) -> None:
         assert narrow.plan(len(allow.ids)).path == "metadata_overfetch"
     finally:
         built.close()
+
+
+def test_m_merge_tightens_every_clause() -> None:
+    left = HardFilters(
+        year_min=1960, year_max=2010, exclude_genres=frozenset({1}), min_vote_count=10
+    )
+    right = HardFilters(
+        year_min=1980, year_max=1999, exclude_genres=frozenset({2}), min_vote_count=50
+    )
+    merged = left.merge(right)
+    assert (merged.year_min, merged.year_max) == (1980, 1999)
+    assert merged.exclude_genres == frozenset({1, 2})
+    assert merged.min_vote_count == 50
+    assert not merged.unsatisfiable
+
+
+def test_n_an_empty_include_set_means_unconstrained() -> None:
+    one = HardFilters(include_languages=frozenset({"ru"}), exclude_watched=False)
+    assert one.merge(HardFilters()).include_languages == frozenset({"ru"})
+    assert one.merge(HardFilters()).exclude_watched is True
+    assert one.merge(one) == one
+    overlapping = HardFilters(include_languages=frozenset({"ru", "fr"}))
+    assert one.merge(overlapping).include_languages == frozenset({"ru"})
