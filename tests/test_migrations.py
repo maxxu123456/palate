@@ -34,9 +34,9 @@ def schema_text(conn: sqlite3.Connection) -> list[tuple[str, str, str]]:
 
 def test_discover_orders_and_hashes() -> None:
     found = discover(MIGRATIONS)
-    assert [m.version for m in found] == [1, 2, 3, 4, 5]
-    assert [m.name for m in found] == ["raw", "core", "user", "corpus", "docs_fts"]
-    assert len({m.checksum for m in found}) == 5
+    assert [m.version for m in found] == [1, 2, 3, 4, 5, 6]
+    assert [m.name for m in found] == ["raw", "core", "user", "corpus", "docs_fts", "index"]
+    assert len({m.checksum for m in found}) == 6
     assert all(len(m.checksum) == 64 for m in found)
 
 
@@ -56,12 +56,13 @@ def test_discover_rejects_a_bad_filename(tmp_path: Path) -> None:
 def test_migrate_creates_every_table(tmp_path: Path) -> None:
     db = make_db(tmp_path)
     report = migrate(db, MIGRATIONS)
-    assert report.applied == (1, 2, 3, 4, 5)
-    assert report.version == 5
+    assert report.applied == (1, 2, 3, 4, 5, 6)
+    assert report.version == 6
     names = table_names(db.read())
     assert {"films", "credits", "user_films", "title_resolutions", "tmdb_raw"} <= names
     assert {"corpus_members", "crawl_runs", "crawl_queue"} <= names
     assert {"film_docs", "films_fts"} <= names
+    assert {"embedding_indexes", "active_index", "film_embeddings"} <= names
     db.close()
 
 
@@ -71,7 +72,7 @@ def test_migrate_twice_is_a_no_op(tmp_path: Path) -> None:
     first = schema_text(db.read())
     report = migrate(db, MIGRATIONS)
     assert report.applied == ()
-    assert report.already == (1, 2, 3, 4, 5)
+    assert report.already == (1, 2, 3, 4, 5, 6)
     assert schema_text(db.read()) == first
     db.close()
 
@@ -176,7 +177,7 @@ def test_ensure_migrated_runs_once(tmp_path: Path) -> None:
     db.ensure_migrated()
     db.ensure_migrated()
     rows = applied(db.read())
-    assert sorted(rows) == [1, 2, 3, 4, 5]
+    assert sorted(rows) == [1, 2, 3, 4, 5, 6]
     db.close()
 
 
