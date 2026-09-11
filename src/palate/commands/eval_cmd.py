@@ -127,7 +127,7 @@ def run(
     smoke: bool = typer.Option(False, help="Only the five arms that carry the argument."),
     fit: bool = typer.Option(True, help="Fit fusion weights on the validation slices first."),
     force: bool = typer.Option(False, help="Rerun configurations that are already stored."),
-    resamples: int = typer.Option(1000, help="Bootstrap resamples per metric."),
+    resamples: int | None = typer.Option(None, help="Bootstrap resamples, overriding config."),
 ) -> None:
     """Run every arm on every fold and store the rankings, the metrics and the deltas."""
     settings = load_settings()
@@ -146,7 +146,7 @@ def run(
                 suite=suite,
                 fit=fit,
                 force=force,
-                resamples=resamples,
+                resamples=resamples or settings.eval.bootstrap_resamples,
             )
         )
     except PalateError as exc:
