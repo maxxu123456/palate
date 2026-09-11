@@ -469,8 +469,9 @@ def _inputs(ctx: EvalContext, fold: Fold, profile: TasteProfile) -> FoldInputs:
     )
 
 
-def _baseline_ranking(ctx: EvalContext, cfg: SystemConfig, fold: Fold) -> _Ranking:
-    profile = ctx.profile(fold, cfg)
+def _baseline_ranking(
+    ctx: EvalContext, cfg: SystemConfig, fold: Fold, profile: TasteProfile
+) -> _Ranking:
     inputs = _inputs(ctx, fold, profile)
     mark = time.perf_counter()
     ranked = BASELINES[cfg.name](inputs, fold)
@@ -540,10 +541,11 @@ def _metrics(
 
 
 def _run_unconditioned(ctx: EvalContext, cfg: SystemConfig, fold: Fold) -> RunResult:
-    started = time.perf_counter()
+    # Warm the profile before the clock starts, or the first arm of a fold wears the fitting.
     profile = ctx.profile(fold, cfg)
+    started = time.perf_counter()
     ranking = (
-        _baseline_ranking(ctx, cfg, fold)
+        _baseline_ranking(ctx, cfg, fold, profile)
         if cfg.is_baseline
         else rank_system(ctx, cfg, fold, profile)
     )
@@ -595,7 +597,7 @@ async def _rankings_for(
 ) -> list[_Ranking]:
     """One ranking per query. A baseline ignores the query, so it is ranked once and reused."""
     if cfg.is_baseline:
-        return [_baseline_ranking(ctx, cfg, fold)] * len(cases)
+        return [_baseline_ranking(ctx, cfg, fold, profile)] * len(cases)
     embedder = ctx.embedder
     if embedder is None:
         raise EvalError("query mode needs an embedding provider in the context")
@@ -627,8 +629,8 @@ async def _run_queries(
     condition: EvalCondition,
 ) -> RunResult:
     """One run over a query set: the target film is the only right answer, out of the corpus."""
-    started = time.perf_counter()
     profile = ctx.profile(fold, cfg)
+    started = time.perf_counter()
     if condition == "query_cold":
         profile = replace(profile, tier="cold", modes=(), anti_modes=(), direction=None)
     rankings = await _rankings_for(ctx, cfg, fold, profile, cases)
