@@ -176,9 +176,8 @@ KNOBS: tuple[SystemConfig, ...] = (
     *(replace(FULL, name=f"history_cap={c}", history_cap=c) for c in (100, 300, 1000)),
 )
 
-# Both need something this build does not have yet: a reranker, and a second index built
-# without credits in the document. They stay in the registry so the day they can run is the
-# day they appear in the table, with no change here.
+# These need a reranker, or a second index rendered without credits. They stay in the registry
+# so the day they can run is the day they appear in the table, with no change here.
 BLOCKED: tuple[SystemConfig, ...] = (
     replace(FULL, name="+cross_encoder(minilm)", reranker="cross_encoder", reranker_model="minilm"),
     replace(FULL, name="+cross_encoder(bge-m3)", reranker="cross_encoder", reranker_model="bge-m3"),

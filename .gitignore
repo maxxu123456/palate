@@ -17,3 +17,4 @@ palate.toml
 *.db-shm
 web/node_modules/
 web/dist/
+eval/report.md

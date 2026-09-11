@@ -15,61 +15,64 @@ cp palate.toml.example ~/.config/palate/palate.toml
 cp .env.example .env
 ```
 
-Pick a chat provider in `palate.toml`. Ollama is the default and needs no key:
+Ollama is the default chat provider and needs no key:
 
 ```sh
 brew install ollama && ollama serve && ollama pull qwen3:8b
 ```
 
-For a hosted model instead, set `provider = "openrouter"` and put the key name in
+For a hosted model set `provider = "openrouter"` and put the key name in
 `api_key_env`. Any OpenAI-compatible `base_url` works too (LM Studio, vLLM,
-Together, Groq). Secrets never go in the config file, only the name of the
+Together, Groq). Embeddings are a separate provider, because most chat hosts do
+not serve them: `uv sync --extra local` runs google/embeddinggemma-300m on MPS
+with no daemon at all. Secrets never go in the config file, only the name of the
 environment variable that holds them.
 
 A TMDB v4 read token goes in `TMDB_READ_TOKEN`. Without it titles resolve only
-from Letterboxd URIs that already carry a TMDB id, and there is nothing to crawl
-with.
+from Letterboxd URIs that already carry a TMDB id.
 
-Then export your Letterboxd data (Settings, Data, Export your data), import it,
-and fill the corpus:
+## Usage
+
+Export your Letterboxd data (Settings, Data, Export your data), then:
 
 ```sh
 palate ingest ~/Downloads/letterboxd-2026-09-14.zip
-palate ingest review
 palate tmdb crawl
-palate tmdb status
+palate index build
+palate profile build
+palate recommend "something slow and cold but not russian" -n 5
 ```
 
-## Configuration
+## Evaluation
 
-Precedence, highest first: CLI flag, `PALATE_` environment variables, `.env`,
-`./palate.toml`, `~/.config/palate/palate.toml`, defaults. Unknown keys are an
-error at startup rather than a silent no-op.
+The holdout is temporal and refuses to pretend otherwise. A Letterboxd export
+dates a rating when it was entered, so a backlog import stamps thousands of films
+on one afternoon and a naive split scores that shuffle as if it were the future.
+Any calendar day holding more than 2 percent of the history is train-only in
+every fold, and under 300 reliably dated films the harness refuses the temporal
+protocol and prints the refusal above the table.
 
-## What works
+```sh
+palate eval split build
+palate eval run
+make readme-table
+```
 
-`palate ingest` reads the five CSVs out of the export, reconciles them per
-Letterboxd URI, and writes `user_films`. Ratings are stored as half-star
-integers 1 to 10 so nothing downstream compares floats. Rows that cannot be
-matched to a TMDB id are kept in `unmatched_export_row` with a reason, because
-dropping them quietly would bias every later measurement toward mainstream
-titles.
+<!-- eval-table:start -->
 
-`palate tmdb crawl` fills `films`, `people` and `credits` from TMDB. The queue is
-the only state, so killing it and rerunning finishes the set rather than starting
-again. Requests are paced at twenty per second and back off on a 429. Every raw
-payload is kept zlib compressed, about 200 MB for forty thousand films, so
-`palate tmdb renormalize` can rebuild every derived row in a minute without
-touching the API. The discover sweep is planned as one window per release year,
-cut into quarters and then months where a year holds more than the ten thousand
-results a single query can return.
+No numbers here yet. Run the three commands above against your own history and
+`make readme-table` writes the generated table into this spot, including the rows
+where a stage did not help.
+
+<!-- eval-table:end -->
 
 ## What does not work yet
 
-Corpus eligibility is not applied yet, so every crawled film counts as a member.
-The embedding index, the taste model, the agent and the evaluation harness are
-not built, and the CLI so far is `palate ingest`, `palate tmdb` and
-`palate version`.
+No reranker, so every arm ranks with stage one only and the cross-encoder rows
+print their reason instead of a number. No agent, no HTTP surface. No item-item
+collaborative filtering, and there never will be: one user, no co-rating matrix,
+nothing to collaborate with. Nearest neighbour search is exact, which is fine to
+a few hundred thousand vectors and stops being fine after that.
 
 ## License
 

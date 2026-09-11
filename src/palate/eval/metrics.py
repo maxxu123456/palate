@@ -149,7 +149,7 @@ def mode_coverage(ids: Sequence[Any], mode_of: Mapping[Any, int], n_modes: int) 
 
 
 def novelty(ids: Sequence[Any], popularity: Mapping[Any, float]) -> float:
-    """Mean popularity-rank surprisal: 0 for the most popular film in the corpus, 1 for the least."""
+    """Mean popularity-rank surprisal, 0 for the corpus's most popular film and 1 for its least."""
     if not ids or len(popularity) < 2:
         return 0.0
     order = sorted(popularity, key=lambda i: (-popularity[i], i))
@@ -192,10 +192,7 @@ def bootstrap_ci(
     alpha: float = 0.05,
     seed: int = 0,
 ) -> MetricCI:
-    """Resample the judged item set against a fixed ranking.
-
-    Repeats collapse, so the interval is a little wider than a textbook bootstrap.
-    """
+    """Resample the judged item set, repeats collapsing to a slightly wider interval."""
     point = metric_fn(ranked, rel)
     items = sorted(rel)
     if len(items) < 2 or n_resamples <= 0:
@@ -206,6 +203,26 @@ def bootstrap_ci(
     )
     lo, hi = np.quantile(draws, [alpha / 2.0, 1.0 - alpha / 2.0])
     return MetricCI(point, float(lo), float(hi), len(items))
+
+
+def mean_ci(
+    values: Sequence[float],
+    *,
+    n_resamples: int = RESAMPLES,
+    alpha: float = 0.05,
+    seed: int = 0,
+) -> MetricCI:
+    """Mean over a query set, with an interval over which queries happened to land in it."""
+    if not values:
+        return MetricCI(0.0, 0.0, 0.0, 0)
+    arr = np.asarray(values, dtype=np.float64)
+    point = float(arr.mean())
+    if arr.size < 2 or n_resamples <= 0:
+        return MetricCI(point, point, point, int(arr.size))
+    rng = np.random.default_rng(seed)
+    draws = arr[rng.integers(0, arr.size, size=(n_resamples, arr.size))].mean(axis=1)
+    lo, hi = np.quantile(draws, [alpha / 2.0, 1.0 - alpha / 2.0])
+    return MetricCI(point, float(lo), float(hi), int(arr.size))
 
 
 def paired_bootstrap(

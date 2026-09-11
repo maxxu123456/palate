@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Literal, cast
@@ -95,11 +95,19 @@ _META = (
 )
 
 
-def load_rated(conn: sqlite3.Connection, *, cutoff: date | None = None) -> list[RatedFilm]:
-    """Every rated film, optionally only those watched before a cutoff."""
+def load_rated(
+    conn: sqlite3.Connection,
+    *,
+    cutoff: date | None = None,
+    only: Collection[int] | None = None,
+) -> list[RatedFilm]:
+    """Every rated film, narrowed by a cutoff date or by an explicit id set, or both."""
     stamp = cutoff.isoformat() if cutoff else None
+    keep = None if only is None else set(only)
     out: list[RatedFilm] = []
     for row in conn.execute(_RATED, (stamp, stamp)):
+        if keep is not None and int(row["tmdb_id"]) not in keep:
+            continue
         raw = row["watched_at"]
         out.append(
             RatedFilm(
@@ -149,6 +157,7 @@ def build(
     db: Database,
     *,
     cutoff: date | None = None,
+    only: Collection[int] | None = None,
     alpha: float = 0.6,
     seed: int = 0,
     split_name: str | None = None,
@@ -157,7 +166,7 @@ def build(
     """Fit a profile in the active index's space, then write it down."""
     record = verify.active(db)
     conn = db.read()
-    rated = load_rated(conn, cutoff=cutoff)
+    rated = load_rated(conn, cutoff=cutoff, only=only)
     if not rated:
         raise ThinHistoryError("no rated films, run: palate ingest <letterboxd export>")
     calibrator = ResidualCalibrator(alpha=alpha).fit(rated, SqliteFilmStore(conn))
@@ -186,7 +195,7 @@ def build(
         affinities=build_affinities(conn, signals),
         calibrator=calibrator.to_row(),
         alpha=alpha,
-        params_sha=_params_sha(record.index_id, alpha, seed, cutoff),
+        params_sha=_params_sha(record.index_id, alpha, seed, cutoff, rated),
         built_at=now_iso(),
         split_name=split_name,
         fold=fold,
@@ -264,13 +273,17 @@ def _direction(
     return fit_preference_direction(design, np.array([s.s for s in rows]), feature_names=names)
 
 
-def _params_sha(index_id: str, alpha: float, seed: int, cutoff: date | None) -> str:
+def _params_sha(
+    index_id: str, alpha: float, seed: int, cutoff: date | None, rated: Sequence[RatedFilm]
+) -> str:
+    # The fitted slice is part of the identity, or two folds of one sweep collide on one sha.
     return short_hash(
         {
             "index_id": index_id,
             "alpha": alpha,
             "seed": seed,
             "cutoff": cutoff.isoformat() if cutoff else None,
+            "slice": short_hash(sorted(r.tmdb_id for r in rated)),
             "kappa": KAPPA,
             "min_ridge_n": MIN_RIDGE_N,
             "tiers": [THIN_FLOOR, FULL_FLOOR],
