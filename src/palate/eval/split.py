@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import sqlite3
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -15,6 +14,7 @@ import orjson
 from palate.clock import now_iso
 from palate.db.connect import Database
 from palate.errors import EvalError, StaleSplitError, TemporalProtocolUnavailable
+from palate.eval.metrics import ideal_dcg
 from palate.hashing import canonical_json, sha256_hex
 from palate.taste.signals import RatedFilm
 
@@ -174,12 +174,6 @@ class Split:
     @property
     def test_per_fold(self) -> tuple[int, ...]:
         return tuple(len(f.test) for f in self.folds)
-
-
-def ideal_dcg(rels: Iterable[int], k: int = NDCG_K) -> float:
-    """DCG of the perfect ordering of these labels, truncated at k."""
-    best = sorted(rels, reverse=True)[:k]
-    return sum((2.0**r - 1.0) / math.log2(i + 2) for i, r in enumerate(best))
 
 
 def detect_catalogue_days(rated: Sequence[RatedFilm], *, threshold: float = 0.02) -> set[date]:
