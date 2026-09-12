@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,8 @@ from palate.db.connect import Database, open_database
 from palate.index import fts, verify
 from palate.index.vecstore import VecStore
 from palate.paths import migrations_dir
+from palate.providers.base import EmbeddingBatch, ProviderHealth, SpanLike, Vector
+from palate.providers.fingerprint import EmbeddingFingerprint
 from palate.retrieval.candidates import CandidateStore
 from palate.taste import profile as taste
 from palate.taste.profile import TasteProfile
@@ -51,3 +54,37 @@ def fit(tmp_path: Path, world: SynthWorld | None = None, *, docs: bool = True) -
     if docs:
         fts.rebuild(db)
     return Fitted(db, planted, taste.build(db))
+
+
+class SynthEmbedder:
+    """Queries land on a planted cluster centre, in the same space as the installed index."""
+
+    provider = "synth"
+
+    def __init__(self, world: SynthWorld, *, cluster: int = 0, max_batch: int = 64) -> None:
+        self.world = world
+        self.cluster = cluster
+        self.max_batch = max_batch
+
+    @property
+    def fingerprint(self) -> EmbeddingFingerprint:
+        """The fingerprint install_index wrote, so the active index accepts these queries."""
+        return synth_sqlite.fingerprint(dim=self.world.centres.shape[1])
+
+    async def ready(self) -> EmbeddingFingerprint:
+        return self.fingerprint
+
+    async def embed_documents(
+        self, texts: Sequence[str], *, span: SpanLike | None = None
+    ) -> EmbeddingBatch:
+        vectors = tuple(tuple(float(x) for x in self.world.centres[self.cluster]) for _ in texts)
+        return EmbeddingBatch(vectors=vectors, fingerprint=self.fingerprint)
+
+    async def embed_query(self, text: str, *, span: SpanLike | None = None) -> Vector:
+        return tuple(float(x) for x in self.world.centres[self.cluster])
+
+    async def health(self) -> ProviderHealth:
+        return ProviderHealth(True, "synthetic", 0.0)
+
+    async def aclose(self) -> None:
+        return None

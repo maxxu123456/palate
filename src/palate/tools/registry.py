@@ -15,6 +15,8 @@ import orjson
 from pydantic import BaseModel, ValidationError, ValidationInfo
 
 from palate.errors import (
+    EvalError,
+    IndexingError,
     PreferenceRefused,
     ProviderAuthError,
     ProviderBadRequest,
@@ -150,6 +152,15 @@ class ToolRegistry:
             raise
         except (ToolDeadlineExceeded, TimeoutError):
             return self._timeout(call, started)
+        except (IndexingError, EvalError) as exc:
+            # No index, a stale profile or too thin a history is a precondition, not a crash.
+            return failure(
+                call.id,
+                call.name,
+                ToolErrorCode.PRECONDITION_FAILED,
+                str(exc),
+                latency_ms=_ms(started),
+            )
         except PreferenceRefused as exc:
             return failure(
                 call.id,

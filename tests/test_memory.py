@@ -8,16 +8,20 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import orjson
 import pytest
 from fixtures.synth import LOVED, build_world
 from fixtures.synth.sqlite import install, install_index
 
+from palate.agent.state import AgentPhase, AgentState, StopReason
+from palate.agent.transcript import Transcript
 from palate.clock import frozen
 from palate.db.connect import Database, open_database
 from palate.errors import PreferenceRefused, StaleArtifact, ThinHistoryError
 from palate.index import verify
+from palate.memory.sessions import SessionStore
 from palate.paths import migrations_dir
-from palate.providers.base import Message
+from palate.providers.base import Message, Usage
 from palate.taste import profile as taste
 from palate.taste.memory import PreferenceDraft, PreferenceStore, ensure_session
 from palate.taste.modes import mode_affinity
@@ -350,3 +354,104 @@ def test_the_rating_histogram_and_mean_come_back_from_the_fit(db: Database, worl
     )
     assert built.cutoff_date is None
     assert date.fromisoformat(built.built_at[:10]).year >= 2026
+
+
+def test_a_session_is_created_once_and_touched_after_that(blank: Database) -> None:
+    store = SessionStore(blank)
+    opened = store.open(provider="fake", model="fake-model", title="first")
+    again = store.open(
+        provider="fake", model="fake-model", session_id=opened.session_id, title=None
+    )
+    assert again.session_id == opened.session_id
+    assert again.title == "first"
+    assert again.updated_at >= opened.updated_at
+    assert [s.session_id for s in store.recent()] == [opened.session_id]
+
+
+def test_a_run_is_written_before_it_finishes_and_closed_with_what_it_spent(
+    blank: Database,
+) -> None:
+    store = SessionStore(blank)
+    session = store.open(provider="fake", model="fake-model")
+    state = AgentState(run_id="run_x", session_id=session.session_id)
+    store.start_run(state.run_id, session.session_id)
+    partial = store.runs(session.session_id)[0]
+    assert partial.phase == "plan"
+    assert partial.ended_at is None
+    state.phase = AgentPhase.DONE
+    state.stop_reason = StopReason.MAX_TURNS
+    state.turn = 3
+    state.total_tool_calls = 5
+    state.ledger.charge(Usage(input_tokens=120, output_tokens=40), 0.002)
+    store.finish_run(state, wall_ms=1234)
+    closed = store.runs(session.session_id)[0]
+    assert closed.phase == "done"
+    assert closed.stop_reason == "max_turns"
+    assert (closed.turns, closed.tool_calls) == (3, 5)
+    assert (closed.input_tokens, closed.output_tokens) == (120, 40)
+    assert closed.cost_usd == pytest.approx(0.002)
+    assert closed.wall_ms == 1234
+    assert closed.ended_at is not None
+
+
+async def test_the_transcript_replays_in_the_order_it_was_written(blank: Database) -> None:
+    ensure_session(blank, SESSION)
+    transcript = Transcript(blank)
+    for text in ("first thing", "second thing", "third thing"):
+        await transcript.append(SESSION, "run_1", Message(role="user", content=text))
+    replayed = transcript.load(SESSION, token_budget=1000)
+    assert [m.content for m in replayed] == ["first thing", "second thing", "third thing"]
+
+
+async def test_the_transcript_stops_at_its_token_budget(blank: Database) -> None:
+    ensure_session(blank, SESSION)
+    transcript = Transcript(blank)
+    for n in range(20):
+        await transcript.append(SESSION, "run_1", Message(role="user", content="x" * 400 + str(n)))
+    replayed = transcript.load(SESSION, token_budget=300)
+    assert 0 < len(replayed) < 20
+    assert replayed[-1].content.endswith("19")
+
+
+async def test_a_tool_message_survives_the_round_trip_with_its_call_id(blank: Database) -> None:
+    ensure_session(blank, SESSION)
+    transcript = Transcript(blank)
+    await transcript.append(
+        SESSION,
+        "run_1",
+        Message(role="tool", content='{"ok": true}', tool_call_id="c1", name="search_films"),
+    )
+    replayed = transcript.load(SESSION, token_budget=1000)[0]
+    assert replayed.role == "tool"
+    assert replayed.tool_call_id == "c1"
+    assert replayed.name == "search_films"
+
+
+def test_compaction_collapses_tool_results_before_it_drops_anything_a_person_said(
+    blank: Database,
+) -> None:
+    payload = orjson.dumps(
+        {"ok": True, "data": {"films": [{"film_id": i} for i in range(12)]}, "meta": {"count": 12}}
+    ).decode()
+    messages = [
+        Message(role="user", content="something slow and cold"),
+        Message(role="tool", content=payload, tool_call_id="c1", name="search_films"),
+        Message(role="assistant", content="three of those are long"),
+    ]
+    compacted = Transcript(blank).compact(messages, 40)
+    assert compacted[0].content == "something slow and cold"
+    assert compacted[1].content.startswith("[search_films -> 12 rows, ids 0,1,2")
+    assert len(compacted[1].content) < len(payload)
+
+
+def test_compaction_that_still_does_not_fit_says_how_much_it_dropped(blank: Database) -> None:
+    messages = [Message(role="user", content="x" * 400) for _ in range(6)]
+    compacted = Transcript(blank).compact(messages, 120)
+    assert compacted[0].content.startswith("[")
+    assert "earlier turns dropped" in compacted[0].content
+    assert len(compacted) < len(messages) + 1
+
+
+def test_a_transcript_that_already_fits_is_returned_untouched(blank: Database) -> None:
+    messages = [Message(role="user", content="short")]
+    assert Transcript(blank).compact(messages, 1000) == messages

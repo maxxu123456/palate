@@ -136,10 +136,14 @@ class AgentLoop:
         session_id: str,
         budget: Budget | None = None,
         ctx_factory: Callable[[AgentState], ToolContext],
+        state: AgentState | None = None,
     ) -> AsyncIterator[AgentEvent]:
-        """The event stream the SSE route iterates."""
-        state = AgentState(run_id=new_run_id(), session_id=session_id)
-        async for event in self._execute(state, user_text, budget, ctx_factory):
+        """The event stream the SSE route iterates.
+
+        Pass a state to own the run id before the first event arrives.
+        """
+        owned = state or AgentState(run_id=new_run_id(), session_id=session_id)
+        async for event in self._execute(owned, user_text, budget, ctx_factory):
             yield event
 
     async def run_to_completion(
