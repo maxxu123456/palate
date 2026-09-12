@@ -267,6 +267,18 @@ def _matrix(vectors: Mapping[int, Sequence[float]], ids: Sequence[int], dim: int
     return out
 
 
+def _put(
+    raw: np.ndarray,
+    support: np.ndarray,
+    column: int,
+    values: np.ndarray,
+    mask: np.ndarray,
+) -> None:
+    """Write a channel only where it produced a value. A masked row keeps a raw zero too."""
+    raw[:, column] = np.where(mask, values, 0.0)
+    support[:, column] = mask
+
+
 def _fill_modes(
     raw: np.ndarray,
     support: np.ndarray,
@@ -277,15 +289,14 @@ def _fill_modes(
 ) -> None:
     if rows.size == 0:
         return
+    # A row with no vector still comes back from mode_affinity, carrying the log prior alone.
     if profile.modes:
-        raw[:, at["mode_affinity"]] = mode_affinity(rows, profile.modes)
-        support[:, at["mode_affinity"]] = seen
+        _put(raw, support, at["mode_affinity"], mode_affinity(rows, profile.modes), seen)
     if profile.modes and profile.anti_modes:
-        raw[:, at["mode_margin"]] = mode_margin(rows, profile.modes, profile.anti_modes)
-        support[:, at["mode_margin"]] = seen
+        margin = mode_margin(rows, profile.modes, profile.anti_modes)
+        _put(raw, support, at["mode_margin"], margin, seen)
     if profile.anti_modes:
-        raw[:, at["anti_affinity"]] = mode_affinity(rows, profile.anti_modes)
-        support[:, at["anti_affinity"]] = seen
+        _put(raw, support, at["anti_affinity"], mode_affinity(rows, profile.anti_modes), seen)
 
 
 def _ridge_rows(
@@ -325,10 +336,8 @@ def _fill_ridge(
     prediction, leverage = predict_with_leverage(direction, rows)
     if inputs.shrink_ridge:
         prediction = prediction / (1.0 + TAU * np.clip(leverage, 0.0, None))
-    raw[:, at["ridge_pref"]] = prediction
-    raw[:, at["ridge_leverage"]] = leverage
-    support[:, at["ridge_pref"]] = seen
-    support[:, at["ridge_leverage"]] = seen
+    _put(raw, support, at["ridge_pref"], prediction, seen)
+    _put(raw, support, at["ridge_leverage"], leverage, seen)
 
 
 def _fill_affinities(
@@ -371,7 +380,8 @@ def _fill_penalties(
     inputs: FeatureInputs,
 ) -> None:
     for i, film in enumerate(facets):
-        if inputs.soft_countries:
+        # An uncredited country is not evidence of an acceptable one, so it stays unsupported.
+        if inputs.soft_countries and film.countries:
             raw[i, at["country_penalty"]] = float(bool(set(film.countries) & inputs.soft_countries))
             support[i, at["country_penalty"]] = True
         total = 0.0
@@ -435,8 +445,8 @@ def _fill_channels(
         return
     scale = float(np.linalg.norm(query)) or 1.0
     norms = np.linalg.norm(rows, axis=1)
-    raw[:, at["query_sim"]] = (rows @ query) / (scale * np.where(norms > 0.0, norms, 1.0))
-    support[:, at["query_sim"]] = seen
+    cosine = (rows @ query) / (scale * np.where(norms > 0.0, norms, 1.0))
+    _put(raw, support, at["query_sim"], cosine, seen)
 
 
 def build_matrix(

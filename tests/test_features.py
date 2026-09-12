@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 
 import numpy as np
 import pytest
@@ -21,6 +22,7 @@ from palate.retrieval.features import (
     load_facets,
     scale_feature,
 )
+from palate.taste.modes import mode_affinity
 
 QUERY_TEXT = "a film about what happens"
 
@@ -174,3 +176,69 @@ def test_k_query_similarity_favours_the_queried_cluster(
     ]
     assert inside and outside
     assert float(np.mean(inside)) > float(np.mean(outside)) + 0.3
+
+
+@dataclass(frozen=True, slots=True)
+class Thinned:
+    """A pool with two kinds of hole in it, and the ids of each."""
+
+    matrix: FeatureMatrix
+    blind: list[int]
+    uncredited: list[int]
+
+
+# Everything computed from an embedding, which a film missing from the index cannot have.
+VECTOR_FEATURES = (
+    "mode_affinity",
+    "mode_margin",
+    "anti_affinity",
+    "ridge_pref",
+    "ridge_leverage",
+    "query_sim",
+)
+
+
+@pytest.fixture(scope="module")
+def thinned(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Thinned]:
+    """A pool where ten films have no vector and ten more have no country credited."""
+    built = pipeline.fit(tmp_path_factory.mktemp("thinned"), docs=False)
+    ids = [
+        int(r["tmdb_id"])
+        for r in built.db.read().execute("select tmdb_id from films order by tmdb_id limit 60")
+    ]
+    blind, uncredited = ids[:10], ids[10:20]
+    with built.db.write() as conn:
+        conn.executemany("delete from film_countries where tmdb_id = ?", [(i,) for i in uncredited])
+    vectors = {k: v for k, v in built.store().vecs.vectors(ids).items() if k not in set(blind)}
+    matrix = build_matrix(
+        built.db.read(),
+        built.profile,
+        ids,
+        FeatureInputs(
+            vectors=vectors,
+            query_embedding=built.world.centres[LOVED[0]].tolist(),
+            soft_countries=frozenset({CLUSTERS[HATED[0]].country}),
+        ),
+    )
+    yield Thinned(matrix, blind, uncredited)
+    built.close()
+
+
+def test_l_a_film_with_no_vector_is_absent_from_the_vector_columns(thinned: Thinned) -> None:
+    rows = [thinned.matrix.ids.index(i) for i in thinned.blind]
+    for name in VECTOR_FEATURES:
+        assert not thinned.matrix.supported(name)[rows].any(), name
+        assert not thinned.matrix.raw_column(name)[rows].any(), name
+        assert not thinned.matrix.column(name)[rows].any(), name
+
+
+def test_m_the_mode_channel_answers_even_for_a_row_it_never_saw(fitted: pipeline.Fitted) -> None:
+    dim = len(fitted.profile.modes[0].centroid)
+    assert float(mode_affinity(np.zeros((1, dim)), fitted.profile.modes)[0]) != 0.0
+
+
+def test_n_an_uncredited_country_is_not_an_accepted_one(thinned: Thinned) -> None:
+    mask = thinned.matrix.supported("country_penalty")
+    absent = {i for i, keep in zip(thinned.matrix.ids, mask, strict=True) if not keep}
+    assert absent == set(thinned.uncredited)
+    assert mask.sum() >= MIN_SUPPORT
