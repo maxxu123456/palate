@@ -7,6 +7,7 @@ from enum import StrEnum
 
 from palate.agent.budget import Budget, BudgetLedger
 from palate.providers.base import Message, ToolCall
+from palate.tools.envelope import ToolResult
 
 
 class AgentPhase(StrEnum):
@@ -48,6 +49,9 @@ class AgentState:
     total_tool_calls: int = 0
     messages: list[Message] = field(default_factory=list)
     pending_calls: list[ToolCall] = field(default_factory=list)
+    observations: list[ToolResult] = field(default_factory=list)
+    results: list[ToolResult] = field(default_factory=list)
+    result_cache: dict[str, ToolResult] = field(default_factory=dict)
     call_counts: dict[str, int] = field(default_factory=dict)
     error_strikes: dict[tuple[str, str], int] = field(default_factory=dict)
     withdrawn_tools: set[str] = field(default_factory=set)

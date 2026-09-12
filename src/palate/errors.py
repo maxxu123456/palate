@@ -147,6 +147,27 @@ class PreferenceRefused(PalateError):
     """A stated preference was not written, carrying the reason to relay to the user."""
 
 
+class ToolFailure(PalateError):
+    """A tool handler failed in a way the model can act on, so it carries a code and a hint."""
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        hint: str = "",
+        valid_values: tuple[str, ...] = (),
+    ) -> None:
+        self.code = code
+        self.hint = hint
+        self.valid_values = valid_values
+        super().__init__(message)
+
+
+class ToolDeadlineExceeded(PalateError):
+    """A tool ran past the run's wall clock deadline."""
+
+
 class StorageError(PalateError):
     """SQLite refused to cooperate."""
 
