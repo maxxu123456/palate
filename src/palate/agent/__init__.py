@@ -1,1 +1,1 @@
-"""The agent package. For now it holds the prompts the rest of the system sends."""
+"""The agent: its state machine, its budget, the events it emits and the prompts it sends."""
