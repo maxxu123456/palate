@@ -208,7 +208,7 @@ def report(
     split: str = typer.Option(DEFAULT_SPLIT, "--split", help="Which frozen split to report."),
     fmt: str = typer.Option("markdown", "--format", help="markdown is the only format."),
     out: str = typer.Option("", help="Write the report here as well as printing it."),
-    into: str = typer.Option("", help="Paste the report between the markers in this file."),
+    into: str = typer.Option("", help="Paste the short table between that file's markers."),
 ) -> None:
     """Render the table from the stored runs. Nothing here is computed, only read."""
     settings = load_settings()
@@ -217,6 +217,7 @@ def report(
         frozen = _frozen(db, split)
         surviving = _surviving(db, frozen)
         table = reporting.render(db, frozen, surviving=surviving)
+        short = reporting.readme_block(db, frozen)
     except PalateError as exc:
         console.print(str(exc))
         raise typer.Exit(code=2) from exc
@@ -229,7 +230,7 @@ def report(
         target = Path(out).expanduser()
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(table, encoding="utf-8")
-    if into and not reporting.paste_into(Path(into).expanduser(), table):
+    if into and not reporting.paste_into(Path(into).expanduser(), short):
         console.print(f"{into} has no {reporting.START_MARKER} markers, nothing pasted")
         raise typer.Exit(code=2)
     console.print(table, markup=False, highlight=False)

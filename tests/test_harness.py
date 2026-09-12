@@ -273,7 +273,10 @@ def test_the_cli_builds_a_split_runs_a_smoke_matrix_and_reports(tmp_path: Path) 
     page.write_text(f"{reporting.START_MARKER}\n{reporting.END_MARKER}\n", encoding="utf-8")
     shown = runner.invoke(app, ["eval", "report", "--into", str(page)], env=env)
     assert shown.exit_code == 0, shown.output
-    assert "| arm | ndcg@10 |" in page.read_text(encoding="utf-8")
+    pasted = page.read_text(encoding="utf-8")
+    assert "| arm | ndcg@10 |" in pasted
+    # The readme takes the short table. The whole report would not fit in it.
+    assert "### Honest notes" not in pasted
 
 
 def test_an_unknown_arm_name_is_refused() -> None:

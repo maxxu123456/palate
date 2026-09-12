@@ -23,6 +23,18 @@ BASELINE = "director_affinity"
 
 EMPTY = "no eval runs are stored for this split yet"
 
+# What the readme carries: the bar to beat, both ends of the ladder, and what ships.
+SUMMARY_ARMS: tuple[str, ...] = (
+    "popularity",
+    "director_affinity",
+    "single_centroid_dense",
+    "dense_only",
+    "+ridge +repulsion",
+    "+exposure_features",
+    "+people_priors",
+    "full",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class Row:
@@ -230,6 +242,43 @@ def main_table(
             + " |"
         )
     return "\n".join(out)
+
+
+def summary(
+    rows: Sequence[Row],
+    deltas: Mapping[tuple[str, str], Delta],
+    *,
+    baseline: str = BASELINE,
+    arms: Sequence[str] = SUMMARY_ARMS,
+) -> str:
+    """The short table, which is the argument rather than the whole run."""
+    keep = {row.system: row for row in rows if row.system in set(arms)}
+    if not keep:
+        return EMPTY
+    out = [f"| arm | ndcg@10 | 95% CI | recall@50 | d vs {baseline} |", "|" + "---|" * 5]
+    for name in arms:
+        row = keep.get(name)
+        if row is None:
+            continue
+        out.append(
+            "| "
+            + " | ".join(
+                [
+                    name,
+                    _cell(row.metrics.get("ndcg@10")),
+                    _interval(row.metrics.get("ndcg@10")),
+                    _cell(row.metrics.get("recall@50")),
+                    _delta_cell(deltas.get((name, baseline))),
+                ]
+            )
+            + " |"
+        )
+    return "\n".join(out)
+
+
+def readme_block(db: Database, split: Split, *, baseline: str = BASELINE) -> str:
+    """The short table, read from the same rows the full report is rendered from."""
+    return summary(load_rows(db, split.name), load_deltas(db, split.name), baseline=baseline)
 
 
 def query_table(db: Database, split: Split) -> str:
