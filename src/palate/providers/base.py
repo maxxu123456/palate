@@ -212,6 +212,65 @@ class EmbeddingBatch:
     cache_hits: int = 0
 
 
+@dataclass(frozen=True, slots=True)
+class RerankCandidate:
+    """One pool member as a reranker sees it, carrying the score it arrived with."""
+
+    film_id: int
+    text: str
+    prior_score: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class RerankResult:
+    """One candidate after reranking, with the place it ended up in."""
+
+    film_id: int
+    score: float
+    rank: int
+
+
+@dataclass(frozen=True, slots=True)
+class RerankReport:
+    """One rerank call, with the numbers the comparison table needs beside the scores."""
+
+    results: tuple[RerankResult, ...]
+    model_key: str
+    n_pairs: int
+    cache_hits: int = 0
+    elapsed_ms: float = 0.0
+    cost_usd: float = 0.0
+    cold_start: bool = False
+
+    def scores(self) -> dict[int, float]:
+        """Score per film, which is what the ce_score feature column reads."""
+        return {r.film_id: r.score for r in self.results}
+
+    def order(self) -> tuple[int, ...]:
+        """Film ids, best first."""
+        return tuple(r.film_id for r in self.results)
+
+
+@runtime_checkable
+class Reranker(Protocol):
+    """Anything that rescores a candidate pool against one query."""
+
+    name: str
+    model_key: str
+
+    async def rerank(
+        self,
+        query: str,
+        candidates: Sequence[RerankCandidate],
+        *,
+        top_k: int,
+        doc_version: str,
+        span: SpanLike | None = None,
+    ) -> RerankReport: ...
+
+    async def aclose(self) -> None: ...
+
+
 @runtime_checkable
 class EmbeddingProvider(Protocol):
     """Anything that turns text into vectors, in one declared space."""

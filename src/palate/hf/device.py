@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import anyio
 
+from palate.errors import ConfigError
 from palate.extras import have, require
 
 _limiter: anyio.CapacityLimiter | None = None
@@ -27,3 +28,14 @@ def mps_limiter() -> anyio.CapacityLimiter:
     if _limiter is None:
         _limiter = anyio.CapacityLimiter(1)
     return _limiter
+
+
+# A wrong reranker score is a plausible ranking with no error, so this is refused, not warned.
+HALF_PRECISION = frozenset({"float16", "fp16", "half", "bfloat16"})
+
+
+def check_precision(dtype: str, device: str) -> str:
+    """The dtype back, unless it is half precision on mps, which returns subtly wrong scores."""
+    if device == "mps" and dtype in HALF_PRECISION:
+        raise ConfigError(f"{dtype} on mps gives subtly wrong cross-encoder scores, use float32")
+    return dtype

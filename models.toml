@@ -20,7 +20,7 @@ kind = "reranker"
 repo_id = "cross-encoder/ms-marco-MiniLM-L6-v2"
 revision = ""
 
-[bge-reranker]
+[bge-m3]
 kind = "reranker"
 repo_id = "BAAI/bge-reranker-v2-m3"
 revision = ""
