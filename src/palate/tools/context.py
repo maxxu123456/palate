@@ -12,7 +12,8 @@ from palate.agent.budget import BudgetLedger
 from palate.config import Settings
 from palate.db.connect import Database
 from palate.errors import ToolDeadlineExceeded, ToolFailure
-from palate.providers.base import Message, SpanLike
+from palate.obs.trace import Span
+from palate.providers.base import Message
 from palate.retrieval.recommend import Recommender
 from palate.retrieval.vocab import Vocabulary
 from palate.taste.memory import PreferenceStore
@@ -38,7 +39,7 @@ class ToolContext:
     profile: TasteProfile | None = None
     prefs: PreferenceStore | None = None
     vocab: Vocabulary | None = None
-    span: SpanLike | None = None
+    span: Span | None = None
 
     def remaining_s(self) -> float:
         """Seconds a handler has left before the run's deadline."""

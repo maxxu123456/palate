@@ -1,0 +1,35 @@
+# Seed for the cost_rates table. The table is the authority at pricing time, never this file,
+# because two authorities disagreeing is how a cost number goes wrong.
+#
+# Local inference is 0.00 USD because that is the truth and not a guess. Local cost is
+# reported as seconds beside dollars rather than blended into a number nobody can defend.
+#
+# Remote prices move, and a stale default silently understates a bill, so none are shipped.
+# OpenRouter reports its own billed figure per request and that is preferred over any table.
+# For an endpoint that reports nothing, add a row here from the provider's own price page:
+#
+#   [[rate]]
+#   provider = "openai_compat"
+#   model = "some/model"
+#   input_per_mtok = 0.0
+#   output_per_mtok = 0.0
+#
+# A model of "*" matches every model that provider serves.
+
+[[rate]]
+provider = "ollama"
+model = "*"
+input_per_mtok = 0.0
+output_per_mtok = 0.0
+
+[[rate]]
+provider = "sentence_transformers"
+model = "*"
+input_per_mtok = 0.0
+output_per_mtok = 0.0
+
+[[rate]]
+provider = "fake"
+model = "*"
+input_per_mtok = 0.0
+output_per_mtok = 0.0

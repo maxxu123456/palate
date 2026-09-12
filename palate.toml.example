@@ -21,5 +21,16 @@ model = "minilm"
 [tmdb]
 token_env = "TMDB_READ_TOKEN"
 
+[agent]
+max_turns = 8
+max_tool_calls = 16
+max_cost_usd = 0.10
+max_wall_s = 90
+# strict_grounding = false  # keep unsupported sentences instead of dropping them
+
 [trace]
+enabled = true
+# hashed proves what was sent without copying your viewing history into a second
+# file. full is what replay needs.
 payloads = "hashed"
+retain_days = 30

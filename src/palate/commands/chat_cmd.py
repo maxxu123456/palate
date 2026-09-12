@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import partial
+from typing import Any
 
 import anyio
 import httpx
@@ -25,6 +26,9 @@ from palate.db.connect import Database, open_database
 from palate.errors import PalateError
 from palate.ids import new_run_id
 from palate.memory.sessions import SessionStore
+from palate.obs.cost import cost_for, seed_rates
+from palate.obs.store import TraceStore
+from palate.obs.trace import NullTracer, SQLiteTracer, Tracer
 from palate.providers.base import ChatProvider, Message
 from palate.providers.http import client_session
 from palate.providers.registry import build_chat, build_embedder
@@ -63,6 +67,7 @@ class Wiring:
     profile: TasteProfile | None
     prefs: PreferenceStore
     vocab: Vocabulary
+    traces: Database | None
 
     def context(self, state: AgentState) -> ToolContext:
         """One tool context per run, sharing this session's read connections."""
@@ -83,6 +88,33 @@ def open_db(settings: Settings) -> Database:
     """Open palate.db with sqlite-vec loaded, which reading the vectors back needs."""
     resolved = paths.resolve(settings.home, offline=settings.offline)
     return open_database(resolved.db, migrations=paths.migrations_dir())
+
+
+def open_traces(settings: Settings) -> Database:
+    """traces.db, seeded with the pricing table at startup and never read for prices after."""
+    resolved = paths.resolve(settings.home, offline=settings.offline)
+    db = open_database(resolved.traces_db, migrations=paths.trace_migrations_dir(), load_vec=False)
+    seed_rates(db, paths.pricing_toml())
+    return db
+
+
+def build_tracer(settings: Settings, traces: Database | None) -> tuple[Tracer, TraceStore | None]:
+    """A real tracer when tracing is on, and a no-op that costs nothing when it is not."""
+    if traces is None:
+        return NullTracer(), None
+    store = TraceStore(
+        traces,
+        queue_max=settings.trace.queue_max,
+        flush_ms=settings.trace.flush_ms,
+        batch=settings.trace.batch,
+        payloads=settings.trace.payloads,
+    )
+
+    def price(provider: str, model: str, usage: Any, reported: float | None) -> tuple[float, str]:
+        found = cost_for(traces, provider, model, usage, reported)
+        return found.usd, found.source
+
+    return SQLiteTracer(store, price=price), store
 
 
 def _recommender(
@@ -115,6 +147,8 @@ async def wire(settings: Settings, db: Database, session_id: str | None) -> Asyn
         )
         profile = taste.latest(db)
         recommender = _recommender(db, settings, session.session_id, http, profile)
+        traces = open_traces(settings) if settings.trace.enabled else None
+        tracer, store = build_tracer(settings, traces)
         try:
             yield Wiring(
                 db=db,
@@ -126,6 +160,7 @@ async def wire(settings: Settings, db: Database, session_id: str | None) -> Asyn
                     PromptRegistry(),
                     settings,
                     transcript=Transcript(db),
+                    tracer=tracer,
                 ),
                 transcript=Transcript(db),
                 sessions=sessions,
@@ -134,11 +169,16 @@ async def wire(settings: Settings, db: Database, session_id: str | None) -> Asyn
                 profile=profile,
                 prefs=PreferenceStore(db),
                 vocab=Vocabulary(db.read()),
+                traces=traces,
             )
         finally:
             await provider.aclose()
             if recommender is not None and recommender.embedder is not None:
                 await recommender.embedder.aclose()
+            if store is not None:
+                store.close()
+            if traces is not None:
+                traces.close()
 
 
 async def one_turn(wiring: Wiring, text: str, *, quiet: bool) -> str:

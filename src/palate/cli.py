@@ -12,6 +12,7 @@ from palate.commands import (
     profile_cmd,
     recommend_cmd,
     tmdb_cmd,
+    traces_cmd,
 )
 
 app = typer.Typer(
@@ -42,3 +43,4 @@ profile_cmd.register(app)
 recommend_cmd.register(app)
 chat_cmd.register(app)
 eval_cmd.register(app)
+traces_cmd.register(app)

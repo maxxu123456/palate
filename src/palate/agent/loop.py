@@ -45,6 +45,7 @@ from palate.errors import ProviderContextOverflow, ProviderError
 from palate.ground.check import GroundednessChecker
 from palate.ground.nli import NLIModel
 from palate.ids import new_run_id
+from palate.obs.trace import LLMRequestRecord, NullTracer, Tracer
 from palate.providers.base import (
     ChatCapabilities,
     ChatProvider,
@@ -139,6 +140,7 @@ class AgentLoop:
         *,
         transcript: Transcript | None = None,
         nli: NLIModel | None = None,
+        tracer: Tracer | None = None,
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -146,6 +148,7 @@ class AgentLoop:
         self.settings = settings
         self.transcript = transcript
         self.nli = nli
+        self.tracer: Tracer = tracer or NullTracer()
 
     async def run(
         self,
@@ -195,6 +198,8 @@ class AgentLoop:
         opened = anyio.current_time()
         state.ledger.start(limits, opened)
         caps = await self.provider.capabilities()
+        traced = self.tracer.run("chat", session_id=state.session_id, input_text=user_text)
+        run_span = traced.__enter__()
         if self.transcript is not None:
             state.messages.extend(
                 self.transcript.load(state.session_id, token_budget=limits.max_prompt_tokens // 2)
@@ -207,15 +212,29 @@ class AgentLoop:
             model=self.provider.model,
             budget=dict(limits.as_json()),
         )
-        while state.phase not in (AgentPhase.DONE, AgentPhase.FAILED):
-            ctx.turn = state.turn
-            ctx.deadline = state.ledger.deadline
-            ctx.user_messages = state.user_messages()
-            entered = state.phase
-            async for event in self._step(state, ctx, limits, caps):
-                yield event
-            if state.phase is entered:
-                state.phase = next_phase(state, limits, anyio.current_time())
+        ctx.span = run_span
+        try:
+            while state.phase not in (AgentPhase.DONE, AgentPhase.FAILED):
+                ctx.turn = state.turn
+                ctx.deadline = state.ledger.deadline
+                ctx.user_messages = state.user_messages()
+                entered = state.phase
+                async for event in self._step(state, ctx, limits, caps):
+                    yield event
+                if state.phase is entered:
+                    state.phase = next_phase(state, limits, anyio.current_time())
+        finally:
+            self.tracer.finish_run(
+                run_span,
+                turns=state.turn,
+                total_tokens_in=state.ledger.input_tokens,
+                total_tokens_out=state.ledger.output_tokens,
+                total_cost_usd=state.ledger.cost_usd,
+                cost_complete=int(state.ledger.exact),
+                stop_reason=str(state.stop_reason or StopReason.ANSWERED),
+                output_text=state.final_text,
+            )
+            traced.__exit__(None, None, None)
         yield RunFinished(
             stop_reason=str(state.stop_reason or StopReason.ANSWERED),
             turns=state.turn,
@@ -433,7 +452,9 @@ class AgentLoop:
         if state.answer is None or state.resolved is None:
             return
         checker = GroundednessChecker(state.evidence, self.nli, self.settings.agent.nli_threshold)
-        report = await checker.check(state.answer, state.run_id)
+        with self.tracer.span("ground", "ground") as span:
+            report = await checker.check(state.answer, state.run_id)
+            self.tracer.record_grounding(span, report)
         state.grounding = report
         if self.settings.agent.strict_grounding:
             repaired, removed = repair(state.answer, report)
@@ -489,18 +510,36 @@ class AgentLoop:
     ) -> Completion:
         state.ledger.observe_prompt(self.provider.count_tokens(messages, tools))
         left = state.ledger.remaining_s(anyio.current_time())
-        done = await self.provider.complete(
-            messages,
-            tools=tools,
-            tool_choice=tool_choice,
-            temperature=self.settings.chat.temperature,
-            max_tokens=max_tokens or self.settings.chat.max_tokens,
-            response_format=response_format,
-            timeout_s=max(1.0, min(self.settings.chat.timeout_s, left)),
-            span=ctx.span,
-        )
+        with self.tracer.span("chat", "llm", parent=ctx.span) as span:
+            done = await self.provider.complete(
+                messages,
+                tools=tools,
+                tool_choice=tool_choice,
+                temperature=self.settings.chat.temperature,
+                max_tokens=max_tokens or self.settings.chat.max_tokens,
+                response_format=response_format,
+                timeout_s=max(1.0, min(self.settings.chat.timeout_s, left)),
+                span=span,
+            )
+            self.tracer.record_llm(span, self._request_record(messages, tools), done)
         state.ledger.charge(done.usage, done.cost_usd)
         return done
+
+    def _request_record(
+        self, messages: Sequence[Message], tools: Sequence[ToolSchema]
+    ) -> LLMRequestRecord:
+        prompt = self.prompts.get("system_agent")
+        return LLMRequestRecord(
+            provider=self.provider.name,
+            model=self.provider.model,
+            messages=messages,
+            tools=tools,
+            prompt_name=prompt.name,
+            prompt_version=prompt.version,
+            prompt_sha=prompt.sha,
+            prompt_template=prompt.text,
+            temperature=self.settings.chat.temperature,
+        )
 
     def _offered(self, state: AgentState, caps: ChatCapabilities) -> list[ToolSchema]:
         if not caps.tools:
@@ -623,10 +662,11 @@ class AgentLoop:
         reads = [c for c in calls if self._kind(c) is ToolKind.READ]
         writes = [c for c in calls if self._kind(c) is ToolKind.WRITE]
         limiter = anyio.CapacityLimiter(limits.max_parallel_calls)
+        order = {call.id: place for place, call in enumerate(calls)}
 
         async def one(call: ToolCall) -> None:
             async with limiter:
-                out[call.id] = await self.registry.dispatch(call, ctx)
+                out[call.id] = await self._one_tool(call, ctx, order[call.id])
 
         if reads:
             async with anyio.create_task_group() as group:
@@ -634,8 +674,17 @@ class AgentLoop:
                     group.start_soon(one, call)
         # Writes run after every read, so a preference cannot race a search that should see it.
         for call in writes:
-            out[call.id] = await self.registry.dispatch(call, ctx)
+            out[call.id] = await self._one_tool(call, ctx, order[call.id])
         return out
+
+    async def _one_tool(self, call: ToolCall, ctx: ToolContext, place: int) -> ToolResult:
+        with self.tracer.span(call.name, "tool", parent=ctx.span) as span:
+            span.set(turn=ctx.turn, seq_in_turn=place)
+            result = await self.registry.dispatch(call, ctx)
+            if not result.ok and result.error is not None:
+                span.fail(str(result.error.code), result.error.message)
+            self.tracer.record_tool(span, call, result)
+        return result
 
     def _kind(self, call: ToolCall) -> ToolKind:
         spec = self.registry.get(call.name)

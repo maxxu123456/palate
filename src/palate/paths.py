@@ -65,3 +65,13 @@ def resolve(home: Path | None = None, *, offline: bool = False) -> Paths:
 def migrations_dir() -> Path:
     """Directory holding the palate.db migration files."""
     return Path(__file__).parent / "db" / "migrations"
+
+
+def trace_migrations_dir() -> Path:
+    """Directory holding the traces.db migration files, which are numbered separately."""
+    return Path(__file__).parent / "trace_migrations"
+
+
+def pricing_toml() -> Path:
+    """The seed loaded into cost_rates at startup."""
+    return Path(__file__).parent / "pricing.toml"
