@@ -175,6 +175,11 @@ def unit_l1(beta: Mapping[str, float]) -> dict[str, float]:
     return {name: value / scale for name, value in beta.items() if value}
 
 
+def prior_share(name: str) -> float:
+    """One feature's share of the signed prior, which is what an unfitted column is worth."""
+    return unit_l1(PRIOR_BETA).get(name, 0.0)
+
+
 def active_features(queries: Sequence[FusionQuery], names: Sequence[str]) -> tuple[str, ...]:
     """Columns some query actually produced. An all zero column has no identifiable weight."""
     if not queries:

@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
+from typing import Any
 
 import anyio
 import typer
@@ -38,14 +39,18 @@ from palate.eval.split import (
     mark_catalogue_days,
     ratings_fingerprint,
 )
-from palate.eval.systems import BY_NAME, FULL, SMOKE, SystemConfig, resolve
+from palate.eval.systems import BY_NAME, FULL, SMOKE, SystemConfig, rerank_key, resolve
+from palate.providers.base import Reranker
 from palate.providers.http import client_session
-from palate.providers.registry import build_embedder
+from palate.providers.registry import build_chat, build_embedder, build_reranker
 from palate.taste import profile as taste
 
 console = Console()
 
 DEFAULT_SPLIT = "rolling"
+
+# Which provider an arm's reranker_model is served by. An unknown key leaves the arm blocked.
+RERANK_PROVIDER = {"minilm": "cross_encoder", "bge-m3": "cross_encoder", "listwise": "llm"}
 
 app = typer.Typer(name="eval", help="Holdouts, ablations and the table.", no_args_is_help=True)
 split_app = typer.Typer(name="split", help="Cut and freeze a holdout.", no_args_is_help=True)
@@ -128,6 +133,7 @@ def run(
     fit: bool = typer.Option(True, help="Fit fusion weights on the validation slices first."),
     force: bool = typer.Option(False, help="Rerun configurations that are already stored."),
     resamples: int | None = typer.Option(None, help="Bootstrap resamples, overriding config."),
+    cache: bool = typer.Option(True, help="Reuse stored rerank scores across arms."),
 ) -> None:
     """Run every arm on every fold and store the rankings, the metrics and the deltas."""
     settings = load_settings()
@@ -146,6 +152,7 @@ def run(
                 suite=suite,
                 fit=fit,
                 force=force,
+                cache=cache,
                 resamples=resamples or settings.eval.bootstrap_resamples,
             )
         )
@@ -154,6 +161,26 @@ def run(
         raise typer.Exit(code=2) from exc
     finally:
         db.close()
+
+
+def _rerankers(
+    settings: Settings, db: Database, arms: Sequence[SystemConfig], *, http: Any, cache: bool
+) -> dict[str, Reranker]:
+    """One reranker per arm key that was asked for, so an unused checkpoint is never loaded."""
+    wanted = sorted({key for cfg in arms if (key := rerank_key(cfg)) is not None})
+    out: dict[str, Reranker] = {}
+    for key in wanted:
+        provider = RERANK_PROVIDER.get(key)
+        if provider is None:
+            continue
+        try:
+            chat = build_chat(settings, client=http) if provider == "llm" else None
+            out[key] = build_reranker(
+                settings, db=db, chat=chat, provider=provider, alias=key, cache=cache
+            )
+        except PalateError as exc:
+            console.print(f"{key}: {exc}")
+    return out
 
 
 async def _run(
@@ -165,10 +192,12 @@ async def _run(
     suite: str,
     fit: bool,
     force: bool,
+    cache: bool,
     resamples: int,
 ) -> None:
     async with client_session() as http:
         embedder = build_embedder(settings, client=http) if suite == "query" else None
+        rerankers = _rerankers(settings, db, arms, http=http, cache=cache)
         try:
             ctx = EvalContext(
                 db=db,
@@ -176,6 +205,7 @@ async def _run(
                 seed=settings.eval.seed,
                 retrieval=settings.retrieval,
                 embedder=embedder,
+                rerankers=rerankers,
                 resamples=resamples,
             )
             if fit and suite == "retrieval":
@@ -201,6 +231,8 @@ async def _run(
         finally:
             if embedder is not None:
                 await embedder.aclose()
+            for ranker in rerankers.values():
+                await ranker.aclose()
 
 
 @app.command("report")
@@ -216,7 +248,7 @@ def report(
     try:
         frozen = _frozen(db, split)
         surviving = _surviving(db, frozen)
-        table = reporting.render(db, frozen, surviving=surviving)
+        table = reporting.render(db, frozen, surviving=surviving, rerankers=RERANK_PROVIDER)
         short = reporting.readme_block(db, frozen)
     except PalateError as exc:
         console.print(str(exc))

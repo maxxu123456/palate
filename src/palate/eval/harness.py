@@ -35,11 +35,11 @@ from palate.eval.metrics import (
 )
 from palate.eval.queries import QueryCase
 from palate.eval.split import Fold, Split, load_corpus_ids
-from palate.eval.systems import SystemConfig, blocked_reason
+from palate.eval.systems import SystemConfig, blocked_reason, rerank_key
 from palate.ids import new_id
 from palate.index import verify
 from palate.index.vecstore import VecStore
-from palate.providers.base import EmbeddingProvider
+from palate.providers.base import EmbeddingProvider, Reranker, RerankReport
 from palate.retrieval.candidates import HardFilters, generate_candidates
 from palate.retrieval.diversity import DiversityConfig, diversify, query_mode_posterior
 from palate.retrieval.features import FeatureInputs, bm25_scores, build_matrix, load_facets
@@ -51,11 +51,14 @@ from palate.retrieval.fusion import (
     combine,
     fit_fusion_weights,
     load_weights,
+    prior_share,
     prior_weights,
     save_weights,
 )
 from palate.retrieval.recommend import budget_from, build_store, diversity_from
-from palate.retrieval.score import score_pool
+from palate.retrieval.rerank import candidates as rerank_candidates
+from palate.retrieval.rerank import load_texts, mode_query
+from palate.retrieval.score import ScoredPool, score_pool
 from palate.taste import profile as taste
 from palate.taste.modes import mode_argmax
 from palate.taste.profile import TasteProfile
@@ -85,6 +88,7 @@ class EvalContext:
     seed: int = 0
     retrieval: RetrievalSettings = field(default_factory=RetrievalSettings)
     embedder: EmbeddingProvider | None = None
+    rerankers: Mapping[str, Reranker] = field(default_factory=dict)
     code_sha: str = ""
     resamples: int = 200
     restarts: int = 8
@@ -196,8 +200,12 @@ def weights_for(
     base = stored if cfg.fusion == "weighted" and stored is not None else None
     if base is None:
         base = prior_weights(active, condition=condition)
-    silenced = {name: 0.0 for name in _off(cfg)}
-    return replace(base, beta={**dict(base.beta), **silenced})
+    beta = {**dict(base.beta), **{name: 0.0 for name in _off(cfg)}}
+    if rerank_key(cfg) is not None and not beta.get("ce_score"):
+        # Weights are fitted on pools that were never reranked, so the fit never sees this
+        # column. Leaving it at zero would run the reranker and change nothing.
+        beta["ce_score"] = prior_share("ce_score")
+    return replace(base, beta=beta)
 
 
 def _validation_query(ctx: EvalContext, cfg: SystemConfig, fold: Fold) -> FusionQuery | None:
@@ -322,6 +330,8 @@ class _Ranking:
     prefilter_path: str
     mode_of: Mapping[int, int]
     stages: dict[str, float]
+    reranked: int = 0
+    cost_usd: float = 0.0
 
 
 def _mode_assignment(
@@ -369,26 +379,36 @@ def rank_system(
     stages["candidates"] = _since(mark)
     mark = time.perf_counter()
     vectors = store.vecs.vectors(pool.ids)
-    matrix = build_matrix(
-        store.conn,
-        shaped,
-        pool.ids,
-        FeatureInputs(vectors=vectors, bm25=bm25_scores(pool), query_embedding=query_embedding),
-    )
+    inputs = FeatureInputs(vectors=vectors, bm25=bm25_scores(pool), query_embedding=query_embedding)
     condition: Condition = "query" if query_embedding is not None else "unconditioned"
     stored = load_weights(store.conn, profile.profile_id).get(condition)
-    weights = weights_for(cfg, matrix.active, condition, stored)
-    mode_of, confidence = _mode_assignment(shaped, matrix.ids, vectors)
-    scored = score_pool(
-        matrix,
-        weights,
-        tier=profile.tier if cfg.confidence_shrinkage else "full",
-        mode_confidence=confidence,
-    )
+
+    def pass_over(ce_scores: Mapping[int, float]) -> tuple[ScoredPool, dict[int, int]]:
+        matrix = build_matrix(
+            store.conn, shaped, pool.ids, replace(inputs, ce_scores=dict(ce_scores))
+        )
+        weights = weights_for(cfg, matrix.active, condition, stored)
+        assigned, confidence = _mode_assignment(shaped, matrix.ids, vectors)
+        return (
+            score_pool(
+                matrix,
+                weights,
+                tier=profile.tier if cfg.confidence_shrinkage else "full",
+                mode_confidence=confidence,
+            ),
+            assigned,
+        )
+
+    scored, mode_of = pass_over({})
     stages["score"] = _since(mark)
     mark = time.perf_counter()
+    report = _rerank(ctx, cfg, shaped, store.conn, scored, query_text)
+    if report is not None:
+        scored, mode_of = pass_over(report.scores())
+    stages["rerank"] = _since(mark)
+    mark = time.perf_counter()
     if cfg.fusion == "rrf":
-        scores = {i: float(pool.rrf.get(i, 0.0)) for i in matrix.ids}
+        scores = {i: float(pool.rrf.get(i, 0.0)) for i in scored.ids}
         order = sorted(scores, key=lambda i: (-scores[i], i))
     else:
         scores = scored.as_map()
@@ -402,7 +422,38 @@ def rank_system(
         prefilter_path=pool.prefilter_path,
         mode_of=mode_of,
         stages=stages,
+        reranked=0 if report is None else len(report.results),
+        cost_usd=0.0 if report is None else report.cost_usd,
     )
+
+
+def _rerank(
+    ctx: EvalContext,
+    cfg: SystemConfig,
+    profile: TasteProfile,
+    conn: sqlite3.Connection,
+    scored: ScoredPool,
+    query_text: str | None,
+) -> RerankReport | None:
+    """Only the head is reranked, which is the whole cost control."""
+    key = rerank_key(cfg)
+    ranker = ctx.rerankers.get(key) if key is not None else None
+    if ranker is None:
+        return None
+    head = scored.order()[: cfg.rerank_depth]
+    pool = rerank_candidates(head, scored.as_map(), load_texts(conn, head))
+    if not pool:
+        return None
+    query = query_text or mode_query(profile, conn)
+    call = partial(
+        ranker.rerank,
+        query,
+        pool,
+        top_k=len(pool),
+        doc_version=profile.doc_template_version,
+    )
+    # This stage runs in a worker thread and the reranker is async, so it goes back to the loop.
+    return anyio.from_thread.run(call)
 
 
 def _diversified(
@@ -564,7 +615,7 @@ def _run_unconditioned(ctx: EvalContext, cfg: SystemConfig, fold: Fold) -> RunRe
         pool_recall=len(reached & set(fold.test)) / max(1, len(fold.test)),
         prefilter_path=ranking.prefilter_path,
         stage_latency_ms=ranking.stages,
-        cost_usd=0.0,
+        cost_usd=ranking.cost_usd,
         profile_id=profile.profile_id,
         elapsed_ms=_since(started),
         degraded=_degraded(ctx, cfg, fold, profile, "unconditioned"),
@@ -576,7 +627,8 @@ def _degraded(
 ) -> tuple[str, ...]:
     """Every reason this row is weaker than its name suggests, carried into the report."""
     out = []
-    if cfg.reranker != "none":
+    key = rerank_key(cfg)
+    if key is not None and key not in ctx.rerankers:
         out.append("no_reranker")
     if profile.tier != "full":
         out.append(f"tier_{profile.tier}")
@@ -662,7 +714,7 @@ async def _run_queries(
         pool_recall=float(np.mean(found)) if found else 0.0,
         prefilter_path=path,
         stage_latency_ms={},
-        cost_usd=0.0,
+        cost_usd=float(sum(r.cost_usd for r in rankings)),
         profile_id=profile.profile_id,
         elapsed_ms=_since(started),
         degraded=_degraded(ctx, cfg, fold, profile, "query"),
@@ -696,8 +748,7 @@ async def run_matrix(
     done = frozenset() if force else _already(ctx)
     out: list[RunResult] = []
     for cfg in cfgs:
-        blocked = blocked_reason(cfg)
-        if blocked is not None:
+        if blocked_reason(cfg, rerankers=ctx.rerankers) is not None:
             continue
         for fold in ctx.split.folds:
             for condition in conditions:

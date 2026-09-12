@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -22,6 +22,16 @@ REFERENCE = "full"
 BASELINE = "director_affinity"
 
 EMPTY = "no eval runs are stored for this split yet"
+
+# The three rerankers against the arm that reranks nothing, which is the control.
+RERANK_ARMS: tuple[str, ...] = (
+    "full",
+    "+cross_encoder(minilm)",
+    "+cross_encoder(bge-m3)",
+    "+llm_rerank",
+)
+
+NO_RERANK = "no rerank arm has been run on this split, so there is nothing to compare"
 
 # What the readme carries: the bar to beat, both ends of the ladder, and what ships.
 SUMMARY_ARMS: tuple[str, ...] = (
@@ -276,6 +286,39 @@ def summary(
     return "\n".join(out)
 
 
+def rerank_table(
+    rows: Sequence[Row], deltas: Mapping[tuple[str, str], Delta], *, reference: str = REFERENCE
+) -> str:
+    """The three axes at once: what a reranker buys, what it costs in ms, what it costs in usd."""
+    keep = {row.system: row for row in rows if row.system in set(RERANK_ARMS)}
+    if len(keep) < 2:
+        return NO_RERANK
+    out = [
+        f"| arm | ndcg@10 | 95% CI | recall@50 | d vs {reference} | p50 ms | usd |",
+        "|" + "---|" * 7,
+    ]
+    for name in RERANK_ARMS:
+        row = keep.get(name)
+        if row is None:
+            continue
+        out.append(
+            "| "
+            + " | ".join(
+                [
+                    name,
+                    _cell(row.metrics.get("ndcg@10")),
+                    _interval(row.metrics.get("ndcg@10")),
+                    _cell(row.metrics.get("recall@50")),
+                    _delta_cell(deltas.get((name, reference))),
+                    f"{row.elapsed_ms:.0f}",
+                    f"{row.cost_usd:.4f}",
+                ]
+            )
+            + " |"
+        )
+    return "\n".join(out)
+
+
 def readme_block(db: Database, split: Split, *, baseline: str = BASELINE) -> str:
     """The short table, read from the same rows the full report is rendered from."""
     return summary(load_rows(db, split.name), load_deltas(db, split.name), baseline=baseline)
@@ -341,10 +384,14 @@ def weights_table(db: Database, split: Split) -> str:
     return "\n".join(out)
 
 
-def not_run() -> str:
-    """Arms in the registry that cannot produce a number yet, and why."""
-    blocked = [(cfg.name, blocked_reason(cfg)) for cfg in ABLATIONS]
-    live = [(name, why) for name, why in blocked if why is not None]
+def not_run(rows: Sequence[Row], *, rerankers: Collection[str] = ()) -> str:
+    """Arms with no stored run on this split, and why each one has no number."""
+    have = {row.system for row in rows}
+    live = [
+        (cfg.name, blocked_reason(cfg, rerankers=rerankers) or "in the registry, never run")
+        for cfg in ABLATIONS
+        if cfg.name not in have
+    ]
     if not live:
         return ""
     return "\n".join(f"- `{name}`: {why}" for name, why in live)
@@ -387,6 +434,7 @@ def render(
     surviving: tuple[int, int] | None = None,
     reference: str = REFERENCE,
     baseline: str = BASELINE,
+    rerankers: Collection[str] = (),
 ) -> str:
     """The whole report, header first, in the order a reader should meet it."""
     rows = load_rows(db, split.name)
@@ -399,11 +447,12 @@ def render(
         main_table(rows, deltas, reference=reference, baseline=baseline),
         "",
     ]
+    parts.extend(["### Rerank", "", rerank_table(rows, deltas, reference=reference), ""])
     queries = query_table(db, split)
     if queries:
         parts.extend(["### Query mode", "", queries, ""])
     parts.extend(["### Fusion weights", "", weights_table(db, split), ""])
-    skipped = not_run()
+    skipped = not_run(rows, rerankers=rerankers)
     if skipped:
         parts.extend(["### Not run yet", "", skipped, ""])
     parts.extend(["### Honest notes", "", honest_notes(split, rows), ""])

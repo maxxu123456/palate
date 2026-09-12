@@ -47,9 +47,8 @@ palate eval run
 make readme-table
 ```
 
-What sits below is the planted history the tests run on, 240 ratings over two
-folds. Every interval spans zero and `ns` says so, so read it as the shape of the
-table and not as a result. Run the three commands on your own export.
+Below is the planted history the tests run on, 240 ratings over two folds. Every
+interval spans zero, so read it as the shape of the table and not as a result.
 
 <!-- eval-table:start -->
 
@@ -68,11 +67,13 @@ table and not as a result. Run the three commands on your own export.
 
 ## What does not work yet
 
-No reranker, so every arm ranks with stage one only and the cross-encoder rows
-print their reason instead of a number. No agent, no HTTP surface. No item-item
+Both rerankers are eval arms and an arm only runs where its checkpoint is, so
+`eval report` prints their reason instead of a number. `uv sync --extra local`
+then `palate eval run` puts the cross-encoder against the LLM reranker on NDCG,
+milliseconds and dollars at once. No agent, no HTTP surface. No item-item
 collaborative filtering, and there never will be: one user, no co-rating matrix,
 nothing to collaborate with. Nearest neighbour search is exact, which stops being
-fine somewhere past a few hundred thousand vectors.
+fine past a few hundred thousand vectors.
 
 ## License
 

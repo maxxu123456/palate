@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Literal
 
@@ -176,12 +176,15 @@ KNOBS: tuple[SystemConfig, ...] = (
     *(replace(FULL, name=f"history_cap={c}", history_cap=c) for c in (100, 300, 1000)),
 )
 
-# These need a reranker, or a second index rendered without credits. They stay in the registry
-# so the day they can run is the day they appear in the table, with no change here.
-BLOCKED: tuple[SystemConfig, ...] = (
+# Three rerankers and the identity control, which is `full` itself. The reranker_model is the
+# key the eval context supplies, so an arm runs on the machine that has that checkpoint.
+RERANK: tuple[SystemConfig, ...] = (
     replace(FULL, name="+cross_encoder(minilm)", reranker="cross_encoder", reranker_model="minilm"),
     replace(FULL, name="+cross_encoder(bge-m3)", reranker="cross_encoder", reranker_model="bge-m3"),
     replace(FULL, name="+llm_rerank", reranker="llm", reranker_model="listwise"),
+)
+
+BLOCKED: tuple[SystemConfig, ...] = (
     replace(FULL, name="doc_no_credits", include_credits_in_doc=False),
 )
 
@@ -193,6 +196,7 @@ ABLATIONS: tuple[SystemConfig, ...] = (
     FULL,
     *LEAVE_OUT,
     *KNOBS,
+    *RERANK,
     *BLOCKED,
 )
 
@@ -222,10 +226,16 @@ def resolve(names: Sequence[str] | None) -> tuple[SystemConfig, ...]:
     return tuple(by_name(n) for n in names)
 
 
-def blocked_reason(cfg: SystemConfig) -> str | None:
-    """Why an arm cannot run yet, which the report prints instead of a number."""
-    if cfg.reranker != "none":
-        return f"no {cfg.reranker} reranker is built yet"
+def rerank_key(cfg: SystemConfig) -> str | None:
+    """Which reranker this arm asks the eval context for, or None when it reranks nothing."""
+    return None if cfg.reranker == "none" else (cfg.reranker_model or cfg.reranker)
+
+
+def blocked_reason(cfg: SystemConfig, *, rerankers: Collection[str] = ()) -> str | None:
+    """Why an arm cannot run here, which the report prints instead of a number."""
+    key = rerank_key(cfg)
+    if key is not None and key not in rerankers:
+        return f"needs a {key} reranker in the eval context"
     if not cfg.include_credits_in_doc:
         return "needs a second index rendered without credits"
     return None

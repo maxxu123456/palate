@@ -5,9 +5,10 @@ from __future__ import annotations
 import httpx
 
 from palate.config import Settings, require_secret, resolve_secret
+from palate.db.connect import Database
 from palate.errors import ConfigError
 from palate.hf.models import pin
-from palate.providers.base import ChatProvider, EmbeddingProvider
+from palate.providers.base import ChatProvider, EmbeddingProvider, Reranker
 from palate.providers.chat.fake import FakeChatProvider, ScriptedTurn
 from palate.providers.chat.hf_inference import HFInferenceChat
 from palate.providers.chat.ollama import BASE_URL as OLLAMA_URL
@@ -19,6 +20,9 @@ from palate.providers.embed.hf_inference import HFInferenceEmbedder
 from palate.providers.embed.ollama import BASE_URL as OLLAMA_EMBED_URL
 from palate.providers.embed.ollama import OllamaEmbedder
 from palate.providers.embed.openai_compat import OpenAICompatEmbedder
+from palate.providers.rerank.cache import ScoreCache
+from palate.providers.rerank.identity import IdentityReranker
+from palate.providers.rerank.llm import LLMReranker
 
 # What `palate doctor` gets when the config says fake, so the wiring is still exercised.
 FAKE_REPLY = "the fake provider is selected, so no model was called"
@@ -105,3 +109,34 @@ def build_embedder(settings: Settings, *, client: httpx.AsyncClient) -> Embeddin
             max_batch=embed.batch_size,
         )
     return FakeEmbedder(max_batch=embed.batch_size)
+
+
+def build_reranker(
+    settings: Settings,
+    *,
+    db: Database | None = None,
+    chat: ChatProvider | None = None,
+    provider: str | None = None,
+    alias: str | None = None,
+    cache: bool = True,
+) -> Reranker:
+    """Build one reranker. provider and alias override the config so an eval arm can name its own."""
+    rerank = settings.rerank
+    kind = provider or rerank.provider
+    store = ScoreCache(db, enabled=cache) if db is not None else None
+    if kind == "cross_encoder":
+        # Imported here so the base install never touches torch by loading this module.
+        from palate.providers.rerank.cross_encoder import CrossEncoderReranker
+
+        return CrossEncoderReranker(pin=pin(alias or rerank.model), cache=store)
+    if kind == "llm":
+        if chat is None:
+            raise ConfigError("rerank.provider is llm, which needs a chat provider")
+        return LLMReranker(
+            chat=chat,
+            model=chat.model,
+            window=rerank.llm_window,
+            stride=rerank.llm_stride,
+            cache=store,
+        )
+    return IdentityReranker()
