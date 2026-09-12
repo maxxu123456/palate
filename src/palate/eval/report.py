@@ -209,6 +209,10 @@ def _interval(ci: MetricCI | None) -> str:
     return "" if ci is None else f"{ci.lo:.2f}-{ci.hi:.2f}"
 
 
+def _ms(ci: MetricCI | None) -> str:
+    return "" if ci is None else f"{ci.point:.0f}"
+
+
 def _delta_cell(found: Delta | None) -> str:
     if found is None:
         return ""
@@ -294,8 +298,8 @@ def rerank_table(
     if len(keep) < 2:
         return NO_RERANK
     out = [
-        f"| arm | ndcg@10 | 95% CI | recall@50 | d vs {reference} | p50 ms | usd |",
-        "|" + "---|" * 7,
+        f"| arm | ndcg@10 | 95% CI | recall@50 | d vs {reference} | cold ms | warm ms | usd |",
+        "|" + "---|" * 8,
     ]
     for name in RERANK_ARMS:
         row = keep.get(name)
@@ -310,7 +314,8 @@ def rerank_table(
                     _interval(row.metrics.get("ndcg@10")),
                     _cell(row.metrics.get("recall@50")),
                     _delta_cell(deltas.get((name, reference))),
-                    f"{row.elapsed_ms:.0f}",
+                    _ms(row.metrics.get("rerank_ms_cold")),
+                    _ms(row.metrics.get("rerank_ms_warm")),
                     f"{row.cost_usd:.4f}",
                 ]
             )
@@ -385,12 +390,12 @@ def weights_table(db: Database, split: Split) -> str:
 
 
 def not_run(rows: Sequence[Row], *, rerankers: Collection[str] = ()) -> str:
-    """Arms with no stored run on this split, and why each one has no number."""
+    """Arms with no stored run that could not have produced one here, and why."""
     have = {row.system for row in rows}
     live = [
-        (cfg.name, blocked_reason(cfg, rerankers=rerankers) or "in the registry, never run")
+        (cfg.name, why)
         for cfg in ABLATIONS
-        if cfg.name not in have
+        if cfg.name not in have and (why := blocked_reason(cfg, rerankers=rerankers)) is not None
     ]
     if not live:
         return ""
@@ -420,6 +425,11 @@ def honest_notes(split: Split, rows: Sequence[Row]) -> str:
         notes.append(
             f"Test coverage is {split.test_coverage:.2f}, below 0.85. The crawl is the bug here, "
             "not the model."
+        )
+    if any(row.system in set(RERANK_ARMS) - {REFERENCE} for row in rows):
+        notes.append(
+            "Cold rerank latency is the fold that paid the checkpoint load. It is reported "
+            "apart from warm latency because averaging the two flatters the slower model."
         )
     missing = [r.system for r in rows if not r.metrics]
     if missing:

@@ -20,6 +20,7 @@ from palate.eval import report as reporting
 from palate.eval.harness import (
     EvalContext,
     publish_weights,
+    rerank_metrics,
     run_matrix,
     run_system,
     weights_for,
@@ -212,6 +213,7 @@ class Reversing:
     def __init__(self) -> None:
         self.model_key = "reversing"
         self.queries: list[str] = []
+        self.warm = False
 
     async def rerank(
         self,
@@ -224,6 +226,7 @@ class Reversing:
     ) -> RerankReport:
         """Highest ce_score to whatever stage one liked least."""
         self.queries.append(query)
+        cold, self.warm = not self.warm, True
         worst_first = sorted(candidates, key=lambda c: (c.prior_score, -c.film_id))
         return RerankReport(
             results=tuple(
@@ -232,6 +235,7 @@ class Reversing:
             ),
             model_key=self.model_key,
             n_pairs=len(candidates),
+            cold_start=cold,
         )
 
     async def aclose(self) -> None:
@@ -454,23 +458,16 @@ def test_the_report_says_which_reranker_an_arm_is_still_waiting_for() -> None:
     assert "needs a minilm reranker" in reporting.not_run(rows)
     assert "needs a minilm reranker" not in reporting.not_run(rows, rerankers={"minilm"})
     assert "doc_no_credits" in reporting.not_run(rows, rerankers={"minilm"})
+    # An arm nobody asked to run is not a blocked arm, so it is not listed as one.
+    assert "no_diversity" not in reporting.not_run([])
 
 
-def test_the_rerank_table_puts_milliseconds_and_dollars_beside_ndcg() -> None:
+def test_the_rerank_table_carries_the_delta_and_the_dollars() -> None:
     rows = [
-        reporting.Row("full", {"ndcg@10": MetricCI(0.30, 0.2, 0.4, 10)}, 2, elapsed_ms=40.0),
+        reporting.Row("full", {"ndcg@10": MetricCI(0.30, 0.2, 0.4, 10)}, 2),
+        reporting.Row("+cross_encoder(minilm)", {"ndcg@10": MetricCI(0.35, 0.25, 0.45, 10)}, 2),
         reporting.Row(
-            "+cross_encoder(minilm)",
-            {"ndcg@10": MetricCI(0.35, 0.25, 0.45, 10)},
-            2,
-            elapsed_ms=900.0,
-        ),
-        reporting.Row(
-            "+llm_rerank",
-            {"ndcg@10": MetricCI(0.28, 0.18, 0.38, 10)},
-            2,
-            elapsed_ms=1900.0,
-            cost_usd=0.0021,
+            "+llm_rerank", {"ndcg@10": MetricCI(0.28, 0.18, 0.38, 10)}, 2, cost_usd=0.0021
         ),
     ]
     found = {
@@ -478,8 +475,68 @@ def test_the_rerank_table_puts_milliseconds_and_dollars_beside_ndcg() -> None:
         ("+llm_rerank", "full"): reporting.Delta(-0.02, -0.06, 0.03, 0, 2),
     }
     table = reporting.rerank_table(rows, found)
-    assert "| p50 ms | usd |" in table
-    assert "| +0.050 | 900 | 0.0000 |" in table
-    assert "| -0.020 ns | 1900 | 0.0021 |" in table
-    # The control has no delta against itself, and it is in the table because it is the control.
+    assert "| +0.050 |" in table
+    # A local reranker costs zero dollars and real seconds, and the table shows both.
+    assert "| -0.020 ns |  |  | 0.0021 |" in table
     assert "| full | 0.300 |" in table
+
+
+def timed(ms: float, reranked: int, *, cold: bool) -> Any:
+    from palate.eval.harness import _Ranking
+
+    return _Ranking(
+        order=(),
+        scores={},
+        pool_size=0,
+        prefilter_path="none",
+        mode_of={},
+        stages={"rerank": ms},
+        reranked=reranked,
+        cold_start=cold,
+    )
+
+
+def test_the_fold_that_paid_the_load_is_not_averaged_into_the_warm_number() -> None:
+    assert rerank_metrics([timed(5.0, 0, cold=True)]) == {}
+    both = rerank_metrics([timed(900.0, 100, cold=True), timed(40.0, 100, cold=False)])
+    assert both["rerank_ms_cold"].point == pytest.approx(900.0)
+    assert both["rerank_ms_warm"].point == pytest.approx(40.0)
+    assert both["rerank_ms_warm"].n == 100
+    warm_only = rerank_metrics([timed(40.0, 100, cold=False), timed(60.0, 100, cold=False)])
+    assert set(warm_only) == {"rerank_ms_warm"}
+    assert warm_only["rerank_ms_warm"].point == pytest.approx(50.0)
+
+
+async def test_a_run_carries_its_rerank_latency_into_the_stored_metrics(tmp_path: Path) -> None:
+    fitted, split = planted(tmp_path)
+    ctx = EvalContext(db=fitted.db, split=split, resamples=20, restarts=2, max_rounds=4)
+    armed = replace(ctx, rerankers={"minilm": Reversing()})
+    first = await run_system(by_name("+cross_encoder(minilm)"), split.folds[0], armed)
+    second = await run_system(by_name("+cross_encoder(minilm)"), split.folds[1], armed)
+    assert "rerank_ms_cold" in first.metrics
+    assert "rerank_ms_warm" not in first.metrics
+    assert "rerank_ms_warm" in second.metrics
+    assert first.metrics["rerank_ms_cold"].n == 100
+    plain = await run_system(by_name("full"), split.folds[0], ctx)
+    assert not [name for name in plain.metrics if name.startswith("rerank_ms")]
+    fitted.close()
+
+
+def test_the_rerank_table_reads_cold_and_warm_from_the_stored_metrics() -> None:
+    rows = [
+        reporting.Row("full", {"ndcg@10": MetricCI(0.30, 0.2, 0.4, 10)}, 2),
+        reporting.Row(
+            "+cross_encoder(bge-m3)",
+            {
+                "ndcg@10": MetricCI(0.35, 0.25, 0.45, 10),
+                "rerank_ms_cold": MetricCI(2400.0, 2400.0, 2400.0, 100),
+                "rerank_ms_warm": MetricCI(810.0, 810.0, 810.0, 100),
+            },
+            2,
+        ),
+    ]
+    table = reporting.rerank_table(rows, {})
+    assert "| cold ms | warm ms | usd |" in table
+    assert "| 2400 | 810 | 0.0000 |" in table
+    # The control reranks nothing, so it has no rerank latency to print at all.
+    assert "| full | 0.300 | 0.20-0.40 |  |  |  |  | 0.0000 |" in table

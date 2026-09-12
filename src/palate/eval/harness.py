@@ -332,6 +332,7 @@ class _Ranking:
     stages: dict[str, float]
     reranked: int = 0
     cost_usd: float = 0.0
+    cold_start: bool = False
 
 
 def _mode_assignment(
@@ -424,6 +425,7 @@ def rank_system(
         stages=stages,
         reranked=0 if report is None else len(report.results),
         cost_usd=0.0 if report is None else report.cost_usd,
+        cold_start=report is not None and report.cold_start,
     )
 
 
@@ -558,6 +560,18 @@ def _list_metrics(
     }
 
 
+def rerank_metrics(rankings: Sequence[_Ranking]) -> dict[str, MetricCI]:
+    """Cold and warm rerank latency kept apart, because only one of the two flatters."""
+    out: dict[str, MetricCI] = {}
+    for name, cold in (("cold", True), ("warm", False)):
+        timed = [r for r in rankings if r.reranked and r.cold_start is cold]
+        if not timed:
+            continue
+        ms = float(np.mean([r.stages.get("rerank", 0.0) for r in timed]))
+        out[f"rerank_ms_{name}"] = MetricCI(ms, ms, ms, sum(r.reranked for r in timed))
+    return out
+
+
 def _metrics(
     ctx: EvalContext, fold: Fold, ranking: _Ranking, profile: TasteProfile
 ) -> dict[str, MetricCI]:
@@ -589,6 +603,7 @@ def _metrics(
     out["spearman_pess"] = MetricCI(pessimistic, pessimistic, pessimistic, total)
     for name, value in _list_metrics(ctx, ranked, profile).items():
         out[name] = MetricCI(value, value, value, LIST_K)
+    out.update(rerank_metrics([ranking]))
     return out
 
 
@@ -709,6 +724,7 @@ async def _run_queries(
         metrics={
             "mrr@50": mean_ci(reciprocal, n_resamples=ctx.resamples, seed=seed),
             "recall@50": mean_ci(found, n_resamples=ctx.resamples, seed=seed),
+            **rerank_metrics(rankings),
         },
         pool_size=int(np.mean(pools)) if pools else 0,
         pool_recall=float(np.mean(found)) if found else 0.0,
