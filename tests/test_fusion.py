@@ -24,6 +24,7 @@ from palate.retrieval.fusion import (
     ndcg_at_k,
     prior_weights,
     save_weights,
+    unit_l1,
 )
 
 # Small enough to fit inside a test, large enough that the ascent has something to find.
@@ -198,3 +199,61 @@ def test_i_weights_round_trip_through_the_profile(fitted: pipeline.Fitted) -> No
     save_weights(fitted.db, fitted.profile.profile_id, {"query": published})
     reloaded = load_weights(fitted.db.read(), fitted.profile.profile_id)
     assert reloaded["query"] == published
+
+
+def hostile_reranker(rng: np.random.Generator, start: int) -> FusionQuery:
+    """A pool where the reranker column points backwards, which an unpinned fit will follow."""
+    n = 60
+    X = rng.normal(size=(n, len(FEATURES)))
+    utility = X @ truth_vector() + rng.normal(0.0, 0.1, size=n)
+    X[:, FEATURES.index("ce_score")] = -utility
+    order = np.argsort(-utility)
+    gain = np.zeros(n)
+    gain[order[:3]] = 3.0
+    gain[order[3:9]] = 2.0
+    gain[order[9:20]] = 1.0
+    return FusionQuery(X=X, gain=gain, ids=tuple(range(start, start + n)))
+
+
+def reranked_folds(seed: int) -> list[FusionFold]:
+    rng = np.random.default_rng(seed)
+    inner = tuple(hostile_reranker(rng, 100 * i) for i in range(6))
+    val = tuple(hostile_reranker(rng, 5000 + 10 * i) for i in range(2))
+    return [FusionFold("fold0", inner, val)]
+
+
+def test_j_a_fit_leaves_the_fitter_on_one_scale() -> None:
+    fitted = fit_fusion_weights(
+        make_folds(11, conditioned=True),
+        condition="query",
+        seed=1,
+        restarts=RESTARTS,
+        max_rounds=ROUNDS,
+    )
+    assert not fitted.fallback
+    assert sum(abs(v) for v in fitted.beta.values()) == pytest.approx(1.0)
+
+
+def test_k_a_longer_vector_does_not_own_the_median() -> None:
+    small = FusionWeights(condition="query", beta={"mode_affinity": 0.5, "popularity": 0.5})
+    large = FusionWeights(condition="query", beta={"mode_affinity": -0.6, "popularity": 2.4})
+    # The raw mean of these two puts mode_affinity at -0.05, which no fold voted for.
+    assert combine([small, large]).beta["mode_affinity"] > 0.0
+    assert unit_l1(large.beta)["mode_affinity"] == pytest.approx(-0.2)
+
+
+def test_l_the_reranker_column_is_pinned_when_a_reranker_is_active() -> None:
+    unpinned = fit_fusion_weights(
+        reranked_folds(17), condition="query", seed=5, restarts=RESTARTS, max_rounds=ROUNDS
+    )
+    assert unpinned.beta["ce_score"] < 0.0
+    pinned = fit_fusion_weights(
+        reranked_folds(17),
+        condition="query",
+        seed=5,
+        restarts=RESTARTS,
+        max_rounds=ROUNDS,
+        reranked=True,
+    )
+    assert pinned.beta.get("ce_score", 0.0) >= 0.0
+    assert check_signs(pinned.beta, condition="query", reranked=True) == ""

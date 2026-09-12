@@ -153,7 +153,9 @@ def check_signs(beta: Mapping[str, float], *, condition: str, reranked: bool = F
     return ""
 
 
-def _bounds(names: Sequence[str], condition: str) -> tuple[np.ndarray, np.ndarray]:
+def _bounds(
+    names: Sequence[str], condition: str, *, reranked: bool = False
+) -> tuple[np.ndarray, np.ndarray]:
     """Half lines the search may not leave, so a sign violation is impossible by construction."""
     low = np.full(len(names), -4.0)
     high = np.full(len(names), 4.0)
@@ -162,7 +164,15 @@ def _bounds(names: Sequence[str], condition: str) -> tuple[np.ndarray, np.ndarra
             high[i] = 0.0
         if name == "query_sim" and condition == "query":
             low[i] = 0.05
+        if name == "ce_score" and reranked:
+            low[i] = 0.0
     return low, high
+
+
+def unit_l1(beta: Mapping[str, float]) -> dict[str, float]:
+    """One scale for every vector, which a rank metric does not notice but a median does."""
+    scale = sum(abs(v) for v in beta.values()) or 1.0
+    return {name: value / scale for name, value in beta.items() if value}
 
 
 def active_features(queries: Sequence[FusionQuery], names: Sequence[str]) -> tuple[str, ...]:
@@ -183,9 +193,7 @@ def prior_weights(
     ndcg_val: float = 0.0,
 ) -> FusionWeights:
     """The signed prior restricted to the live features and normalised to unit L1."""
-    beta = {name: PRIOR_BETA.get(name, 0.0) for name in active}
-    scale = sum(abs(v) for v in beta.values()) or 1.0
-    normalised = {name: value / scale for name, value in beta.items() if value}
+    normalised = unit_l1({name: PRIOR_BETA.get(name, 0.0) for name in active})
     return FusionWeights(
         condition=condition,
         beta=normalised,
@@ -256,6 +264,7 @@ def fit_fusion_weights(
     max_rounds: int = 40,
     l1: float = 0.01,
     max_active: int = 10,
+    reranked: bool = False,
 ) -> FusionWeights:
     """Coordinate ascent directly on validation NDCG@10. L1 drives dead features to zero."""
     if not folds:
@@ -267,7 +276,7 @@ def fit_fusion_weights(
     names = inner[0].names
     active = active_features(inner, names)
     columns = [i for i, name in enumerate(names) if name in active]
-    low, high = _bounds(names, condition)
+    low, high = _bounds(names, condition, reranked=reranked)
     prior = np.array([PRIOR_BETA.get(name, 0.0) for name in names], dtype=np.float64)
     seeded = np.zeros(len(names))
     seeded[columns] = prior[columns]
@@ -284,7 +293,7 @@ def fit_fusion_weights(
         if score > best_score:
             best_beta, best_score = beta, score
     best_beta = _prune(best_beta, columns, max_active, low)
-    return _publish(best_beta, names, active, inner, val, condition, folds)
+    return _publish(best_beta, names, active, inner, val, condition, folds, reranked=reranked)
 
 
 def _publish(
@@ -295,17 +304,19 @@ def _publish(
     val: Sequence[FusionQuery],
     condition: Condition,
     folds: Sequence[FusionFold],
+    *,
+    reranked: bool = False,
 ) -> FusionWeights:
     fitted_on = ", ".join(fold.name for fold in folds)
     weights = {name: float(v) for name, v in zip(names, beta, strict=True) if v}
     ndcg_inner = mean_ndcg(inner, beta)
     ndcg_val = mean_ndcg(val, beta) if val else ndcg_inner
     gap = ndcg_inner - ndcg_val
-    if gap > OVERFIT_GAP_MAX or check_signs(weights, condition=condition):
+    if gap > OVERFIT_GAP_MAX or check_signs(weights, condition=condition, reranked=reranked):
         return prior_weights(active, condition=condition, fitted_on=fitted_on, ndcg_val=ndcg_val)
     return FusionWeights(
         condition=condition,
-        beta=weights,
+        beta=unit_l1(weights),
         fitted_on=fitted_on,
         ndcg_inner=ndcg_inner,
         ndcg_val=ndcg_val,
@@ -318,10 +329,11 @@ def combine(fits: Sequence[FusionWeights]) -> FusionWeights:
     """The shipping vector is the per feature median across folds, not one fold's guess."""
     if not fits:
         raise ValueError("nothing to combine")
-    names = sorted({name for fit in fits for name in fit.beta})
-    median = {name: float(np.median([fit.beta.get(name, 0.0) for fit in fits])) for name in names}
-    scale = sum(abs(v) for v in median.values()) or 1.0
-    beta = {name: value / scale for name, value in median.items() if value}
+    # One vote each. A longer vector would otherwise carry the median on size alone.
+    votes = [unit_l1(fit.beta) for fit in fits]
+    names = sorted({name for vote in votes for name in vote})
+    median = {name: float(np.median([vote.get(name, 0.0) for vote in votes])) for name in names}
+    beta = unit_l1(median)
     return FusionWeights(
         condition=fits[0].condition,
         beta=beta,

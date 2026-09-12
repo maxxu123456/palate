@@ -262,6 +262,7 @@ def fit_weights(
             seed=ctx.seed + held,
             restarts=ctx.restarts,
             max_rounds=ctx.max_rounds,
+            reranked=cfg.reranker != "none",
         )
         for held in sorted(queries)
     ]
