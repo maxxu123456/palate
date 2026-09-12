@@ -10,11 +10,23 @@ from typing import Any, Literal
 
 import anyio
 import orjson
+from pydantic import ValidationError
 
+from palate.agent.answer import (
+    StructuredAnswer,
+    assemble,
+    films_json,
+    parse,
+    parse_error,
+    resolve,
+    response_format,
+)
 from palate.agent.budget import Budget
 from palate.agent.events import (
     AgentEvent,
+    GroundingChecked,
     PreferenceRecorded,
+    Recommendations,
     RunFailed,
     RunFinished,
     RunStarted,
@@ -25,16 +37,20 @@ from palate.agent.events import (
     TurnStarted,
 )
 from palate.agent.prompts import PromptRegistry
+from palate.agent.repair import repair
 from palate.agent.state import AgentPhase, AgentState, StopReason, next_phase
 from palate.agent.transcript import Transcript
 from palate.config import Settings
 from palate.errors import ProviderContextOverflow, ProviderError
+from palate.ground.check import GroundednessChecker
+from palate.ground.nli import NLIModel
 from palate.ids import new_run_id
 from palate.providers.base import (
     ChatCapabilities,
     ChatProvider,
     Completion,
     Message,
+    ResponseFormat,
     ToolCall,
     ToolChoice,
     ToolSchema,
@@ -122,12 +138,14 @@ class AgentLoop:
         settings: Settings,
         *,
         transcript: Transcript | None = None,
+        nli: NLIModel | None = None,
     ) -> None:
         self.provider = provider
         self.registry = registry
         self.prompts = prompts
         self.settings = settings
         self.transcript = transcript
+        self.nli = nli
 
     async def run(
         self,
@@ -225,7 +243,10 @@ class AgentLoop:
                 async for event in self._force_answer(state, ctx):
                     yield event
             case AgentPhase.FINALIZE:
-                async for event in self._finalize(state, ctx):
+                async for event in self._finalize(state, ctx, caps):
+                    yield event
+            case AgentPhase.GROUND:
+                async for event in self._ground(state):
                     yield event
             case _:
                 return
@@ -247,14 +268,16 @@ class AgentLoop:
                 state, ctx, self._request(state, ctx, limits), tools=tools, tool_choice="required"
             )
             calls, text = self._calls_of(state, retried)
-        channel: Literal["thinking", "answer"] = "thinking" if calls else "answer"
+        # With a database behind it the answer is assembled in FINALIZE, so this is not it yet.
+        talking = not calls and ctx.db is None
+        channel: Literal["thinking", "answer"] = "answer" if talking else "thinking"
         for piece in deltas(text):
             yield TextDelta(text=piece, channel=channel)
         state.messages.append(
             Message(role="assistant", content=text, tool_calls=calls, channel=channel)
         )
         state.pending_calls = list(calls)
-        if not calls:
+        if talking:
             state.final_text = text
 
     async def _plan_call(
@@ -316,6 +339,7 @@ class AgentLoop:
             state.results.append(shaped)
             state.total_tool_calls += 1
             if shaped.ok:
+                state.evidence.absorb(shaped.data)
                 state.consecutive_tool_errors = 0
                 if spec is not None and spec.kind is ToolKind.WRITE:
                     self._invalidate(state, spec.invalidates)
@@ -341,12 +365,90 @@ class AgentLoop:
         async for event in self._last_word(state, ctx):
             yield event
 
-    async def _finalize(self, state: AgentState, ctx: ToolContext) -> AsyncIterator[AgentEvent]:
+    async def _finalize(
+        self, state: AgentState, ctx: ToolContext, caps: ChatCapabilities
+    ) -> AsyncIterator[AgentEvent]:
+        # Prose is assembled from database rows, so with no database the model's own text is it.
+        if ctx.db is not None:
+            parsed = await self._structured(state, ctx, caps)
+            if parsed is not None:
+                report = resolve(parsed, ctx.db, state.evidence)
+                state.answer = report.answer
+                state.resolved = report
+                state.constraint_violation = report.watched_ids
+                for piece in deltas(report.answer.preamble):
+                    yield TextDelta(text=piece, channel="answer")
+                return
         if state.final_text.strip():
             return
         # A turn that emitted neither calls nor text still owes the user an answer.
         async for event in self._last_word(state, ctx):
             yield event
+
+    async def _structured(
+        self, state: AgentState, ctx: ToolContext, caps: ChatCapabilities
+    ) -> StructuredAnswer | None:
+        # A model that already answered in the right shape does not owe another call.
+        ready = _already_structured(state)
+        if ready is not None:
+            return ready
+        prompt = self.prompts.get("final_answer")
+        messages = [*state.messages, Message(role="system", content=prompt.text)]
+        wanted = response_format() if caps.json_schema else None
+        done = await self._answer_call(state, ctx, messages, wanted)
+        if done is None:
+            return None
+        try:
+            return parse(done.content, provider_json=caps.json_schema)
+        except ValidationError as exc:
+            retry = [*messages, Message(role="system", content=parse_error(exc))]
+            second = await self._answer_call(state, ctx, retry, wanted)
+            if second is None:
+                return None
+        try:
+            return parse(second.content, provider_json=caps.json_schema)
+        except ValidationError:
+            return None
+
+    async def _answer_call(
+        self,
+        state: AgentState,
+        ctx: ToolContext,
+        messages: Sequence[Message],
+        wanted: ResponseFormat | None,
+    ) -> Completion | None:
+        try:
+            return await self._ask(
+                state,
+                ctx,
+                messages,
+                tools=(),
+                response_format=wanted,
+                max_tokens=self.settings.agent.max_completion_tokens,
+            )
+        except ProviderError:
+            return None
+
+    async def _ground(self, state: AgentState) -> AsyncIterator[AgentEvent]:
+        if state.answer is None or state.resolved is None:
+            return
+        checker = GroundednessChecker(state.evidence, self.nli, self.settings.agent.nli_threshold)
+        report = await checker.check(state.answer, state.run_id)
+        state.grounding = report
+        if self.settings.agent.strict_grounding:
+            repaired, removed = repair(state.answer, report)
+            state.answer = repaired
+            state.answer_repaired = bool(removed)
+        yield GroundingChecked(
+            grounded_ratio=report.grounded_ratio,
+            nli_available=report.nli_available,
+            unsupported=report.unsupported_sentences,
+            dropped_film_ids=report.dropped_film_ids,
+        )
+        facts = state.resolved.facts
+        state.final_text = assemble(state.answer, facts)
+        state.messages.append(Message(role="assistant", content=state.final_text))
+        yield Recommendations(films=films_json(state.answer, facts), prose=state.final_text)
 
     async def _last_word(self, state: AgentState, ctx: ToolContext) -> AsyncIterator[AgentEvent]:
         prompt = self.prompts.get("force_answer")
@@ -383,6 +485,7 @@ class AgentLoop:
         tools: Sequence[ToolSchema],
         tool_choice: ToolChoice = "auto",
         max_tokens: int | None = None,
+        response_format: ResponseFormat | None = None,
     ) -> Completion:
         state.ledger.observe_prompt(self.provider.count_tokens(messages, tools))
         left = state.ledger.remaining_s(anyio.current_time())
@@ -392,6 +495,7 @@ class AgentLoop:
             tool_choice=tool_choice,
             temperature=self.settings.chat.temperature,
             max_tokens=max_tokens or self.settings.chat.max_tokens,
+            response_format=response_format,
             timeout_s=max(1.0, min(self.settings.chat.timeout_s, left)),
             span=ctx.span,
         )
@@ -573,6 +677,16 @@ class AgentLoop:
         worked = orjson.dumps(spec.examples[0].model_dump(exclude_none=True)).decode()
         joined = f"{error.hint}\na call that works: {worked}" if error.hint else worked
         return replace(error, hint=joined, schema_excerpt=schema)
+
+
+def _already_structured(state: AgentState) -> StructuredAnswer | None:
+    spoken = [m for m in state.messages if m.role == "assistant" and m.content.strip()]
+    if not spoken:
+        return None
+    try:
+        return parse(spoken[-1].content, provider_json=False)
+    except ValidationError:
+        return None
 
 
 def _field_of(message: str) -> str:

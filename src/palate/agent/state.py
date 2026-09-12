@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from palate.agent.answer import ResolveReport, StructuredAnswer
 from palate.agent.budget import Budget, BudgetLedger
+from palate.ground.check import GroundingReport
+from palate.ground.evidence_index import EvidenceIndex
 from palate.providers.base import Message, ToolCall
 from palate.tools.envelope import ToolResult
 
@@ -57,7 +60,13 @@ class AgentState:
     withdrawn_tools: set[str] = field(default_factory=set)
     consecutive_tool_errors: int = 0
     compactions: int = 0
+    evidence: EvidenceIndex = field(default_factory=EvidenceIndex)
     ledger: BudgetLedger = field(default_factory=BudgetLedger)
+    answer: StructuredAnswer | None = None
+    resolved: ResolveReport | None = None
+    grounding: GroundingReport | None = None
+    answer_repaired: bool = False
+    constraint_violation: tuple[int, ...] = ()
     stop_reason: StopReason | None = None
     final_text: str = ""
 
