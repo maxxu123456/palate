@@ -1,0 +1,524 @@
+:root {
+  --paper: #edede8;
+  --ink: #16181a;
+  --muted: #6e706e;
+  --rule: #c9c9c2;
+  --mark: #1f4d3f;
+  --field: #e3e3dd;
+  --gutter: 16px;
+}
+
+/* Neutral, never neon. The accent stays pine, lifted only enough to stay readable. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #16181a;
+    --ink: #e7e7e1;
+    --muted: #8d908c;
+    --rule: #2d302f;
+    --mark: #63a98f;
+    --field: #1f2223;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: Archivo, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--mark);
+  outline-offset: 2px;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.narrow {
+  font-family: "Archivo Narrow", "Arial Narrow", Archivo, sans-serif;
+}
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 10px var(--gutter);
+  border-bottom: 1px solid var(--rule);
+}
+
+.masthead__name {
+  font-weight: 600;
+}
+
+.masthead__state {
+  color: var(--muted);
+  display: flex;
+  gap: 1.25rem;
+}
+
+.panes {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.pane--listing {
+  border-right: 1px solid var(--rule);
+}
+
+.pane__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 8px var(--gutter);
+  border-bottom: 1px solid var(--rule);
+  position: sticky;
+  top: 0;
+  background: var(--paper);
+  z-index: 1;
+}
+
+.views {
+  display: flex;
+  gap: 1rem;
+}
+
+.views button {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 2px 0;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.views button[aria-current="true"] {
+  color: var(--ink);
+  border-bottom-color: var(--mark);
+}
+
+.find {
+  background: var(--field);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 3px 6px;
+  min-width: 10rem;
+  flex: 0 1 16rem;
+}
+
+.listing {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* The one orchestrated moment: the whole list settles once when the results change. */
+.listing--reflow {
+  animation: settle 180ms ease-out;
+}
+
+@keyframes settle {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.row {
+  border-top: 1px solid var(--rule);
+}
+
+.listing > li:first-child .row {
+  border-top: 0;
+}
+
+.row__line {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 3.25rem;
+  gap: 0 12px;
+  align-items: start;
+  width: 100%;
+  padding: 8px var(--gutter);
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row__art {
+  aspect-ratio: 2 / 3;
+  width: 30px;
+  background: var(--field);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  object-fit: cover;
+  display: block;
+}
+
+.row__body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.75rem;
+  min-width: 0;
+}
+
+.row__title {
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.row[data-open="true"] .row__title {
+  color: var(--mark);
+}
+
+.row__meta {
+  color: var(--muted);
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.row__hook {
+  flex-basis: 100%;
+  color: var(--muted);
+  max-width: 68ch;
+}
+
+/* The open record prints the whole overview, so the hook would just say it twice. */
+.row[data-open="true"] .row__hook {
+  display: none;
+}
+
+.row__score {
+  text-align: right;
+  color: var(--muted);
+}
+
+.detail {
+  padding: 4px var(--gutter) 14px calc(var(--gutter) + 42px);
+  max-width: 78ch;
+}
+
+.detail p {
+  margin: 0 0 8px;
+}
+
+.detail__facts {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  gap: 2px 12px;
+  margin: 0;
+}
+
+.detail__facts dt {
+  color: var(--muted);
+}
+
+.detail__facts dd {
+  margin: 0;
+}
+
+.mine {
+  color: var(--mark);
+}
+
+.bars {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.detail .pairs,
+.detail .bars {
+  margin-top: 12px;
+}
+
+/* Wider than the profile's number columns, because these two hold table names. */
+.detail .pairs li {
+  grid-template-columns: minmax(0, 1fr) 8rem 8rem;
+}
+
+.detail .pairs .n,
+.detail .pairs .v {
+  text-align: left;
+}
+
+.bars li {
+  display: grid;
+  grid-template-columns: 9rem 1fr 3.25rem;
+  gap: 8px;
+  align-items: center;
+}
+
+.bar {
+  position: relative;
+  height: 6px;
+  background: var(--field);
+}
+
+.bar span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--mark);
+}
+
+.bar[data-sign="down"] span {
+  background: var(--muted);
+}
+
+.bars .v {
+  text-align: right;
+  color: var(--muted);
+}
+
+.transcript {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px var(--gutter);
+}
+
+.turn {
+  margin-bottom: 14px;
+}
+
+.turn__who {
+  color: var(--muted);
+}
+
+.turn__body {
+  padding-left: 1rem;
+  white-space: pre-wrap;
+  max-width: 68ch;
+}
+
+.turn--palate .turn__body {
+  font-weight: 500;
+}
+
+.trace {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  padding: 3px 0 3px 1rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.trace__detail {
+  padding: 0 0 4px 2rem;
+  color: var(--muted);
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+.composer {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 8px var(--gutter);
+  border-top: 1px solid var(--rule);
+}
+
+.composer textarea {
+  flex: 1;
+  min-height: 2.6rem;
+  max-height: 8rem;
+  resize: vertical;
+  background: var(--field);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 5px 7px;
+}
+
+.composer button {
+  background: var(--field);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.composer button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.empty,
+.notice {
+  color: var(--muted);
+  padding: 12px var(--gutter);
+  max-width: 62ch;
+}
+
+.section {
+  padding: 10px var(--gutter);
+  border-bottom: 1px solid var(--rule);
+}
+
+.section h2 {
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0 0 6px;
+}
+
+.pairs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pairs li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 3rem 3.25rem;
+  gap: 8px;
+  border-top: 1px solid var(--rule);
+  padding: 3px 0;
+}
+
+.pairs li:first-child {
+  border-top: 0;
+}
+
+.pairs li > span {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.section .empty {
+  padding: 6px 0 0;
+}
+
+.pairs .n,
+.pairs .v {
+  color: var(--muted);
+  text-align: right;
+}
+
+.waterfall {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.waterfall li {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr) 4.5rem;
+  gap: 8px;
+  align-items: center;
+  border-top: 1px solid var(--rule);
+  padding: 3px var(--gutter);
+}
+
+.waterfall li:first-child {
+  border-top: 0;
+}
+
+.waterfall__kind {
+  color: var(--muted);
+}
+
+.waterfall__bar {
+  height: 6px;
+  background: var(--field);
+}
+
+.waterfall__bar span {
+  display: block;
+  height: 100%;
+  background: var(--mark);
+}
+
+.waterfall li[data-status="error"] .waterfall__bar span {
+  background: var(--muted);
+}
+
+.waterfall__ms {
+  text-align: right;
+  color: var(--muted);
+}
+
+/* One column, and the document scrolls rather than two panes scrolling inside it. */
+@media (max-width: 720px) {
+  html,
+  body,
+  #root,
+  .shell {
+    height: auto;
+  }
+
+  .panes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pane {
+    overflow-y: visible;
+  }
+
+  .pane__head {
+    position: static;
+  }
+
+  .pane--listing {
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .transcript {
+    overflow-y: visible;
+  }
+
+  .detail {
+    padding-left: var(--gutter);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .listing--reflow {
+    animation: none;
+  }
+}

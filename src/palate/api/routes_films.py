@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sqlite3
+from collections.abc import Sequence
 from functools import partial
 from typing import Annotated, Any
 
@@ -16,7 +18,7 @@ from palate.retrieval.evidence import FilmCard, RecommendedFilm, load_cards
 from palate.retrieval.recommend import RecommendRequest, RecommendResponse
 from palate.retrieval.vocab import Kind
 from palate.tools.catalog import compare_films, get_film, get_taste_profile, resolve_vocabulary
-from palate.tools.catalog.common import hook_of
+from palate.tools.catalog.common import hook_of, ids_json
 from palate.tools.catalog.search_films import SearchFilmsArgs, hard_filters, meta_of
 from palate.tools.context import ToolContext
 
@@ -28,6 +30,10 @@ NO_PROFILE = "no taste profile yet, run: palate profile build"
 _TITLES = (
     "select tmdb_id from films where title like ? escape '\\' "
     "or original_title like ? escape '\\' order by vote_count desc limit ?"
+)
+
+_POSTERS = (
+    "select tmdb_id, poster_path from films where tmdb_id in (select value from json_each(?))"
 )
 
 _COUNTS = {
@@ -49,6 +55,7 @@ class FilmBrief(BaseModel):
     runtime: int | None = None
     in_watchlist: bool = False
     hook: str | None = None
+    poster_path: str | None = None
 
 
 class EvidenceOut(BaseModel):
@@ -121,7 +128,13 @@ def context(state: AppState, session_id: str | None = None) -> ToolContext:
     )
 
 
-def brief(card: FilmCard) -> FilmBrief:
+def posters(conn: sqlite3.Connection, ids: Sequence[int]) -> dict[int, str | None]:
+    """Poster paths by id. The page appends them to a TMDB image base, and invents none."""
+    rows = conn.execute(_POSTERS, (ids_json(ids),))
+    return {int(row["tmdb_id"]): row["poster_path"] for row in rows}
+
+
+def brief(card: FilmCard, poster: str | None) -> FilmBrief:
     """One card as a listing row. The hook is the overview's first sentence, not a summary."""
     return FilmBrief(
         film_id=card.tmdb_id,
@@ -133,16 +146,19 @@ def brief(card: FilmCard) -> FilmBrief:
         runtime=card.runtime,
         in_watchlist=card.in_watchlist,
         hook=hook_of(card.overview),
+        poster_path=poster,
     )
 
 
 def briefs(state: AppState, ids: list[int]) -> list[FilmBrief]:
     """Cards for a list of ids, in the order asked, skipping any the corpus does not hold."""
-    cards = load_cards(state.db.read(), ids)
-    return [brief(cards[i]) for i in ids if i in cards]
+    conn = state.db.read()
+    cards = load_cards(conn, ids)
+    art = posters(conn, ids)
+    return [brief(cards[i], art.get(i)) for i in ids if i in cards]
 
 
-def recommended(film: RecommendedFilm, card: FilmCard | None) -> RecommendedOut:
+def recommended(film: RecommendedFilm, card: FilmCard | None, poster: str | None) -> RecommendedOut:
     """One ranked film with the evidence a reader can argue with."""
     return RecommendedOut(
         film_id=film.tmdb_id,
@@ -154,6 +170,7 @@ def recommended(film: RecommendedFilm, card: FilmCard | None) -> RecommendedOut:
         runtime=film.runtime,
         in_watchlist=film.in_watchlist,
         hook=None if card is None else hook_of(card.overview),
+        poster_path=poster,
         score=round(film.score, 4),
         confidence=round(film.confidence, 4),
         mode_label=film.mode_label,
@@ -174,8 +191,11 @@ def recommended(film: RecommendedFilm, card: FilmCard | None) -> RecommendedOut:
 
 def response_of(state: AppState, answer: RecommendResponse) -> RecommendOut:
     """The ranked list plus the diagnostics that say what the filters cost."""
-    cards = load_cards(state.db.read(), [f.tmdb_id for f in answer.films])
-    films = [recommended(f, cards.get(f.tmdb_id)) for f in answer.films]
+    ids = [f.tmdb_id for f in answer.films]
+    conn = state.db.read()
+    cards = load_cards(conn, ids)
+    art = posters(conn, ids)
+    films = [recommended(f, cards.get(f.tmdb_id), art.get(f.tmdb_id)) for f in answer.films]
     return RecommendOut(
         films=films,
         pool_size=answer.pool_size,

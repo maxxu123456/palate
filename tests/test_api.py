@@ -186,6 +186,7 @@ def test_recommend_ranks_without_the_agent(client: TestClient, world: pipeline.F
     assert not {f["film_id"] for f in body["films"]} & watched
     assert body["diagnostics"]["returned"] == len(body["films"])
     assert all(f["title"] for f in body["films"])
+    assert all("poster_path" in f for f in body["films"])
 
 
 def test_recommend_rejects_a_genre_the_corpus_does_not_have(client: TestClient) -> None:
