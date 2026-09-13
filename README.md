@@ -29,6 +29,7 @@ palate index build
 palate profile build
 palate recommend "something slow and cold but not russian" -n 5
 palate chat "what should I watch tonight, nothing russian"
+palate serve  # the same loop over http on 127.0.0.1:8000, needs --extra api
 ```
 
 `chat` is a hand-rolled loop over ten tools. The model returns ids, never titles:
@@ -69,11 +70,10 @@ palate eval split build && palate eval run && make readme-table
 Both rerankers are eval arms and an arm only runs where its checkpoint is, so
 `eval report` prints their reason instead of a number. `uv sync --extra local`
 then `palate eval run` puts them against each other on NDCG, milliseconds and
-dollars at once. That extra is also the groundedness checker's paraphrase arm,
-and without it a reworded plot line is marked unsupported. The checker has no
-measured precision yet, so `grounded_ratio` is not a number to quote. No HTTP
-surface, and no collaborative filtering: one user, no co-rating matrix. Nearest
-neighbour search is exact and stops scaling past a few hundred thousand vectors.
+dollars at once. That extra is also the checker's paraphrase arm, without which
+a reworded plot line is marked unsupported, and the checker has no measured
+precision yet, so `grounded_ratio` is not a number to quote. No collaborative
+filtering. Neighbour search is exact and stops scaling past 100k vectors.
 
 ## License
 

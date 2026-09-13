@@ -14,6 +14,7 @@ from palate.commands import (
     tmdb_cmd,
     traces_cmd,
 )
+from palate.extras import require
 
 app = typer.Typer(
     name="palate",
@@ -33,6 +34,18 @@ def main() -> None:
 def version() -> None:
     """Print the installed version."""
     typer.echo(__version__)
+
+
+@app.command()
+def serve(
+    host: str = typer.Option("127.0.0.1", help="Bind address. Loopback, because there is no auth."),
+    port: int = typer.Option(8000, help="Port to listen on."),
+    reload: bool = typer.Option(False, "--reload", help="Restart on a source change."),
+) -> None:
+    """Serve the agent over HTTP. Needs the api extra."""
+    # Imported here so a base install still has a working CLI without fastapi.
+    uvicorn = require("api", "uvicorn")
+    uvicorn.run("palate.api.app:create_app", host=host, port=port, reload=reload, factory=True)
 
 
 doctor.register(app)
