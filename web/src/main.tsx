@@ -1,22 +1,15 @@
 import { StrictMode, useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 
-import {
-  api,
-  asBrief,
-  streamChat,
-  type AnsweredFilm,
-  type FilmBrief,
-  type Health,
-  type Recommended,
-  type SseFrame,
-} from "./api/client"
+import { api, asBrief, streamChat, type FilmBrief, type Health, type Recommended } from "./api/client"
+import type { AgentEvent } from "./api/events"
 import { FilmDetail } from "./film/FilmDetail"
 import { FilmRow } from "./film/FilmRow"
 import { ProfilePanel } from "./profile/ProfilePanel"
+import { Waterfall } from "./traces/Waterfall"
 import "./styles.css"
 
-type View = "programme" | "taste"
+type View = "programme" | "taste" | "traces"
 
 type Listed = FilmBrief | Recommended
 
@@ -30,11 +23,6 @@ interface Turn {
   who: "you" | "palate"
   text: string
   traces: Trace[]
-}
-
-function text(frame: SseFrame, key: string): string {
-  const value = frame.data[key]
-  return typeof value === "string" ? value : ""
 }
 
 function ranked(film: Listed): Recommended | undefined {
@@ -163,33 +151,36 @@ function App() {
       .catch(showProblem)
   }
 
-  function absorb(frame: SseFrame) {
-    if (frame.event === "run.started") {
-      session.current = text(frame, "session_id")
-      runId.current = text(frame, "run_id")
-      setTurns((old) => [...old, { who: "palate", text: "", traces: [] }])
-      return
-    }
-    if (frame.event === "text.delta" && frame.data.channel === "answer") {
-      const delta = text(frame, "text")
-      setTurns((old) => lastTurn(old, (turn) => ({ ...turn, text: turn.text + delta })))
-      return
-    }
-    if (frame.event === "tool.finished") {
-      const trace = {
-        id: text(frame, "call_id"),
-        line: `> ${text(frame, "summary")}`,
-        detail: JSON.stringify(frame.data.meta ?? {}, null, 2),
+  function absorb(event: AgentEvent) {
+    switch (event.type) {
+      case "run.started":
+        session.current = event.session_id
+        runId.current = event.run_id
+        setTurns((old) => [...old, { who: "palate", text: "", traces: [] }])
+        return
+      case "text.delta":
+        if (event.channel !== "answer") return
+        setTurns((old) => lastTurn(old, (turn) => ({ ...turn, text: turn.text + event.text })))
+        return
+      case "tool.finished": {
+        const trace = {
+          id: event.call_id,
+          line: `> ${event.summary}`,
+          detail: JSON.stringify(event.meta, null, 2),
+        }
+        setTurns((old) => lastTurn(old, (turn) => ({ ...turn, traces: [...turn.traces, trace] })))
+        return
       }
-      setTurns((old) => lastTurn(old, (turn) => ({ ...turn, traces: [...turn.traces, trace] })))
-      return
+      case "recommendations":
+        list(event.films.map(asBrief))
+        setView("programme")
+        return
+      case "run.failed":
+        setNotice(event.message)
+        return
+      default:
+        return
     }
-    if (frame.event === "recommendations") {
-      list(((frame.data.films ?? []) as AnsweredFilm[]).map(asBrief))
-      setView("programme")
-      return
-    }
-    if (frame.event === "run.failed") setNotice(text(frame, "message"))
   }
 
   async function ask(message: string) {
@@ -236,6 +227,9 @@ function App() {
               <button aria-current={view === "taste"} onClick={() => setView("taste")}>
                 Taste
               </button>
+              <button aria-current={view === "traces"} onClick={() => setView("traces")}>
+                Traces
+              </button>
             </nav>
             <form
               onSubmit={(event) => {
@@ -253,7 +247,9 @@ function App() {
             </form>
           </div>
           {notice === null ? null : <p className="notice">{notice}</p>}
-          {view === "taste" ? <ProfilePanel /> : <Listing films={films} reflow={reflow} />}
+          {view === "taste" ? <ProfilePanel /> : null}
+          {view === "traces" ? <Waterfall /> : null}
+          {view === "programme" ? <Listing films={films} reflow={reflow} /> : null}
         </section>
         <section className="pane">
           <div className="transcript">

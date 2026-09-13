@@ -447,7 +447,7 @@ textarea {
 
 .waterfall li {
   display: grid;
-  grid-template-columns: 5.5rem minmax(0, 1fr) 4.5rem;
+  grid-template-columns: 4.5rem minmax(0, 1fr) minmax(0, 2fr) 4rem;
   gap: 8px;
   align-items: center;
   border-top: 1px solid var(--rule);

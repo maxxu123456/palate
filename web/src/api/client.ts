@@ -1,3 +1,5 @@
+import { asEvent, type AgentEvent, type AnsweredFilm } from "./events"
+
 // The dev server proxies /api to the loopback server. Point VITE_PALATE_API at the
 // server's own origin to skip the proxy.
 const BASE = import.meta.env.VITE_PALATE_API ?? "/api"
@@ -110,16 +112,6 @@ export interface Health {
   corpus: { films: number; eligible: number; rated: number }
 }
 
-export interface AnsweredFilm {
-  film_id: number
-  title: string
-  year: number | null
-  runtime: number | null
-  directors: string[]
-  why: string
-  evidence_refs: string[]
-}
-
 /** An answered film as a listing row. The reason takes the hook's place, nothing is invented. */
 export function asBrief(film: AnsweredFilm): FilmBrief {
   return {
@@ -136,9 +128,38 @@ export function asBrief(film: AnsweredFilm): FilmBrief {
   }
 }
 
-export interface SseFrame {
-  event: string
-  data: Record<string, unknown>
+export interface TraceRun {
+  run_id: string
+  kind: string
+  session_id: string | null
+  started_at: string
+  latency_ms: number | null
+  status: string
+  turns: number
+  tokens_in: number
+  tokens_out: number
+  cost_usd: number
+  cost_complete: boolean
+}
+
+export interface TraceSpan {
+  span_id: string
+  parent_id: string | null
+  name: string
+  kind: string
+  seq: number
+  depth: number
+  latency_ms: number | null
+  status: string
+  error_type: string | null
+}
+
+export interface TraceDetail {
+  run_id: string
+  spans: TraceSpan[]
+  llm_calls: Record<string, unknown>[]
+  tool_calls: Record<string, unknown>[]
+  claims: Record<string, unknown>[]
 }
 
 export interface ChatAsk {
@@ -178,23 +199,25 @@ export const api = {
   recommend: (query: string, limit = 12) =>
     send<RecommendOut>("/recommend", "POST", { search: { query, limit } }),
   cancel: (runId: string) => fetch(`${BASE}/chat/${runId}/cancel`, { method: "POST" }),
+  traces: (since = "24h", limit = 50) => get<TraceRun[]>("/traces", { since, limit }),
+  trace: (runId: string) => get<TraceDetail>(`/traces/${runId}`),
 }
 
-function parseBlock(block: string): SseFrame | null {
-  let event = ""
+function parseBlock(block: string): AgentEvent | null {
+  let tag = ""
   let data = ""
   for (const line of block.split("\n")) {
-    if (line.startsWith("event: ")) event = line.slice(7)
+    if (line.startsWith("event: ")) tag = line.slice(7)
     else if (line.startsWith("data: ")) data += line.slice(6)
   }
-  if (!event || !data) return null
-  return { event, data: JSON.parse(data) as Record<string, unknown> }
+  if (!tag || !data) return null
+  return asEvent(tag, JSON.parse(data) as Record<string, unknown>)
 }
 
 /** Read one run as it happens. Server sent events over POST, so not EventSource. */
 export async function streamChat(
   ask: ChatAsk,
-  onFrame: (frame: SseFrame) => void,
+  onEvent: (event: AgentEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
   const answer = await fetch(`${BASE}/chat`, {
@@ -212,8 +235,8 @@ export async function streamChat(
     buffer += value.replace(/\r\n/g, "\n")
     let cut = buffer.indexOf("\n\n")
     while (cut >= 0) {
-      const frame = parseBlock(buffer.slice(0, cut))
-      if (frame !== null) onFrame(frame)
+      const event = parseBlock(buffer.slice(0, cut))
+      if (event !== null) onEvent(event)
       buffer = buffer.slice(cut + 2)
       cut = buffer.indexOf("\n\n")
     }
