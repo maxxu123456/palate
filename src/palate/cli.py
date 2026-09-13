@@ -14,6 +14,7 @@ from palate.commands import (
     tmdb_cmd,
     traces_cmd,
 )
+from palate.errors import MissingExtra
 from palate.extras import require
 
 app = typer.Typer(
@@ -43,8 +44,12 @@ def serve(
     reload: bool = typer.Option(False, "--reload", help="Restart on a source change."),
 ) -> None:
     """Serve the agent over HTTP. Needs the api extra."""
-    # Imported here so a base install still has a working CLI without fastapi.
-    uvicorn = require("api", "uvicorn")
+    try:
+        # Imported here so a base install still has a working CLI without fastapi.
+        uvicorn = require("api", "uvicorn")
+    except MissingExtra as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=2) from exc
     uvicorn.run("palate.api.app:create_app", host=host, port=port, reload=reload, factory=True)
 
 

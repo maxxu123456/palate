@@ -10,6 +10,7 @@ import pytest
 
 import palate
 from palate.errors import MissingExtra
+from palate.extras import have
 from palate.hf.models import ModelPin
 
 # Anything here at import time means a base install just paid for a gigabyte it cannot use.
@@ -17,14 +18,23 @@ FORBIDDEN = ("torch", "sentence_transformers", "transformers", "scipy")
 
 PIN = ModelPin("embeddinggemma", "google/embeddinggemma-300m", "a" * 40, dim=768)
 
+# A web framework cannot be lazily imported, so these modules exist only with the extra.
+NEEDS_EXTRA = {"palate.api": "fastapi"}
+
+
+def installed(name: str) -> bool:
+    return all(not name.startswith(prefix) or have(mod) for prefix, mod in NEEDS_EXTRA.items())
+
 
 def module_names() -> list[str]:
-    return [m.name for m in pkgutil.walk_packages(palate.__path__, "palate.")]
+    found = [m.name for m in pkgutil.walk_packages(palate.__path__, "palate.")]
+    return [name for name in found if installed(name)]
 
 
 def test_there_is_something_to_walk() -> None:
     names = module_names()
     assert "palate.providers.embed.sentence_transformers" in names
+    assert ("palate.api.app" in names) == have("fastapi")
     assert len(names) > 30
 
 
