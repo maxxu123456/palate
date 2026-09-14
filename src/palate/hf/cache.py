@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from palate.extras import require
+from huggingface_hub import scan_cache_dir
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,8 +22,7 @@ class CachedRepo:
 
 def scan() -> tuple[CachedRepo, ...]:
     """Every cached repo, largest first."""
-    hub = require("hf", "huggingface_hub")
-    info = hub.scan_cache_dir()
+    info = scan_cache_dir()
     repos = [
         CachedRepo(
             repo_id=repo.repo_id,

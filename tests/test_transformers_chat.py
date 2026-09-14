@@ -109,7 +109,7 @@ def build(reply: str, **overrides: Any) -> tuple[TransformersLocalChat, FakePipe
     provider = TransformersLocalChat(
         alias=ALIAS,
         device="cpu",
-        pipeline=pipe,
+        pipe=pipe,
         streamer_factory=lambda tokenizer, timeout: FakeStreamer(timeout),
         **overrides,
     )
@@ -282,7 +282,7 @@ async def test_the_registry_builds_the_local_provider_from_the_default_config() 
     assert provider.context_window == settings.chat.num_ctx
 
 
-@pytest.mark.torch
+@pytest.mark.weights
 async def test_the_pinned_checkpoint_answers_on_the_real_device() -> None:
     """Needs several gigabytes of weights in the cache, so it never runs by default."""
     provider = TransformersLocalChat(alias=ALIAS)

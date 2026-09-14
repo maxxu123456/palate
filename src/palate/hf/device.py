@@ -3,20 +3,17 @@
 from __future__ import annotations
 
 import anyio
+import torch
 
 from palate.errors import ConfigError
-from palate.extras import have, require
 
 _limiter: anyio.CapacityLimiter | None = None
 
 
 def resolve_device(preferred: str | None = None) -> str:
-    """mps when torch says it is there, otherwise cpu. Never imports torch to say cpu."""
+    """mps when torch has it, then cuda, otherwise cpu."""
     if preferred:
         return preferred
-    if not have("torch"):
-        return "cpu"
-    torch = require("local", "torch")
     if torch.backends.mps.is_available():
         return "mps"
     return "cuda" if torch.cuda.is_available() else "cpu"

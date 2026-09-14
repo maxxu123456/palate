@@ -1,27 +1,16 @@
-"""The paraphrase arm. Present only with the local extra, and absent is a reported state."""
+"""The paraphrase arm, which reuses the reranker checkpoint rather than loading a second one."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from functools import partial
-from typing import Any, Protocol, runtime_checkable
+from typing import Any
 
 import anyio
+from sentence_transformers import CrossEncoder
 
-from palate.extras import require
 from palate.hf.device import check_precision, mps_limiter, resolve_device
 from palate.hf.models import ModelPin
-
-
-@runtime_checkable
-class NLIModel(Protocol):
-    """Anything that scores how far a premise entails a hypothesis, in [0, 1]."""
-
-    model_key: str
-
-    async def entails(self, pairs: Sequence[tuple[str, str]]) -> list[float]: ...
-
-    async def aclose(self) -> None: ...
 
 
 def _sigmoid(scores: Any) -> Any:
@@ -44,14 +33,13 @@ class CrossEncoderNLI:
         dtype: str = "float32",
         limiter: anyio.CapacityLimiter | None = None,
     ) -> None:
-        st = require("local", "sentence_transformers")
         self.pin = pin
         self.device = resolve_device(device)
         self.dtype = check_precision(dtype, self.device)
         self.batch_size = batch_size
         self.model_key = f"{pin.repo_id}@{pin.revision[:12]}"
         self._limiter = limiter
-        self.model: Any = st.CrossEncoder(
+        self.model: Any = CrossEncoder(
             pin.repo_id,
             revision=pin.revision,
             device=self.device,

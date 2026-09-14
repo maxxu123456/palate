@@ -176,6 +176,6 @@ def test_require_raises_missing_extra_with_the_uv_command() -> None:
     assert have("json")
     assert not have("palate_no_such_module")
     with pytest.raises(MissingExtra) as exc:
-        require("local", "palate_no_such_module")
-    assert "uv sync --extra local" in str(exc.value)
-    assert exc.value.extra == "local"
+        require("api", "palate_no_such_module")
+    assert "uv sync --extra api" in str(exc.value)
+    assert exc.value.extra == "api"

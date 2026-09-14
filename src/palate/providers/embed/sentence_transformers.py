@@ -1,4 +1,4 @@
-"""embeddinggemma on MPS, through sentence-transformers, behind the optional extra."""
+"""embeddinggemma on MPS, through sentence-transformers, in this process."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from functools import partial
 from typing import Any
 
 import anyio
+from sentence_transformers import SentenceTransformer
 
-from palate.extras import require
 from palate.hf.device import mps_limiter, resolve_device
 from palate.hf.models import ModelPin
 from palate.providers.base import EmbeddingBatch, ProviderHealth, SpanLike, Vector
@@ -30,13 +30,12 @@ class SentenceTransformersEmbedder:
         truncate_dim: int | None = None,
         limiter: anyio.CapacityLimiter | None = None,
     ) -> None:
-        st = require("local", "sentence_transformers")
         self.pin = pin
         self.device = resolve_device(device)
         self.max_batch = batch_size
         self.truncate_dim = truncate_dim
         self._limiter = limiter
-        self.model: Any = st.SentenceTransformer(
+        self.model: Any = SentenceTransformer(
             pin.repo_id,
             revision=pin.revision,
             device=self.device,

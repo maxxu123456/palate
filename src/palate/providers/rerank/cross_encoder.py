@@ -1,4 +1,4 @@
-"""A Hub cross-encoder on MPS, behind the optional extra, scoring raw logits."""
+"""A Hub cross-encoder on MPS, scoring raw logits."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from functools import partial
 from typing import Any
 
 import anyio
+from sentence_transformers import CrossEncoder
 
-from palate.extras import require
 from palate.hf.device import check_precision, mps_limiter, resolve_device
 from palate.hf.models import ModelPin
 from palate.providers.base import (
@@ -45,7 +45,6 @@ class CrossEncoderReranker:
         limiter: anyio.CapacityLimiter | None = None,
         cache: ScoreCache | None = None,
     ) -> None:
-        st = require("local", "sentence_transformers")
         self.pin = pin
         self.device = resolve_device(device)
         self.dtype = check_precision(dtype, self.device)
@@ -55,7 +54,7 @@ class CrossEncoderReranker:
         self._limiter = limiter
         self._warm = False
         # num_labels, max_length, activation_fn and device are keyword only from v6 on.
-        self.model: Any = st.CrossEncoder(
+        self.model: Any = CrossEncoder(
             pin.repo_id,
             revision=pin.revision,
             device=self.device,

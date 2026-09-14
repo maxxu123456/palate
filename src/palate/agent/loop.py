@@ -42,8 +42,7 @@ from palate.agent.state import AgentPhase, AgentState, StopReason, next_phase
 from palate.agent.transcript import Transcript
 from palate.config import Settings
 from palate.errors import ProviderContextOverflow, ProviderError
-from palate.ground.check import GroundednessChecker
-from palate.ground.nli import NLIModel
+from palate.ground.check import GroundednessChecker, NLIModel
 from palate.ids import new_run_id
 from palate.obs.trace import LLMRequestRecord, NullTracer, Tracer
 from palate.providers.base import (

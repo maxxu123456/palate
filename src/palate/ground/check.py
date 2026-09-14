@@ -5,12 +5,23 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Protocol, runtime_checkable
 
 from palate.agent.answer import StructuredAnswer
 from palate.ground.claims import Claim, ClaimKind, extract, names_in, numbers_in
 from palate.ground.evidence_index import EvidenceIndex, FilmEvidence
-from palate.ground.nli import NLIModel
+
+
+@runtime_checkable
+class NLIModel(Protocol):
+    """Anything that scores how far a premise entails a hypothesis, in [0, 1]."""
+
+    model_key: str
+
+    async def entails(self, pairs: Sequence[tuple[str, str]]) -> list[float]: ...
+
+    async def aclose(self) -> None: ...
+
 
 type Method = Literal["set", "exact", "span", "nli", "exempt"]
 

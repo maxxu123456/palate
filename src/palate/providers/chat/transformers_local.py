@@ -8,9 +8,9 @@ from functools import partial
 from typing import Any
 
 import anyio
+from transformers import TextIteratorStreamer, pipeline, set_seed
 
 from palate.errors import ConfigError, ProviderUnavailable
-from palate.extras import require
 from palate.hf.cache import holds
 from palate.hf.device import mps_limiter, resolve_device
 from palate.hf.download import ensure_local
@@ -55,7 +55,7 @@ class TransformersLocalChat:
         timeout_s: float = STALL_TIMEOUT_S,
         parse_content_tool_calls: bool = True,
         limiter: anyio.CapacityLimiter | None = None,
-        pipeline: Any | None = None,
+        pipe: Any | None = None,
         streamer_factory: Callable[[Any, float], Any] | None = None,
     ) -> None:
         self.model = alias
@@ -66,7 +66,7 @@ class TransformersLocalChat:
         self.timeout_s = timeout_s
         self.parse_content_tool_calls = parse_content_tool_calls
         self._limiter = limiter
-        self._pipe: Any = pipeline
+        self._pipe: Any = pipe
         self._streamer_factory = streamer_factory
         self._pin: ModelPin | None = None
         self._lock = anyio.Lock()
@@ -207,11 +207,9 @@ class TransformersLocalChat:
         return self._pipe
 
     def _build(self) -> Any:
-        transformers = require("local", "transformers")
-        target = self.pin
         # The snapshot is already the pinned commit, so nothing here resolves a revision.
-        local = ensure_local(target)
-        return transformers.pipeline(
+        local = ensure_local(self.pin)
+        return pipeline(
             task="text-generation", model=str(local), dtype=self.dtype, device=self.device
         )
 
@@ -250,15 +248,14 @@ class TransformersLocalChat:
 
     def _blocking(self, prompt: str, kwargs: dict[str, Any], seed: int | None) -> str:
         if seed is not None:
-            require("local", "transformers").set_seed(seed)
+            set_seed(seed)
         out = self._pipe(prompt, **kwargs)
         return str(out[0]["generated_text"]) if out else ""
 
     def _streamer(self, timeout_s: float) -> Any:
         if self._streamer_factory is not None:
             return self._streamer_factory(self._tokenizer(), timeout_s)
-        transformers = require("local", "transformers")
-        return transformers.TextIteratorStreamer(
+        return TextIteratorStreamer(
             self._tokenizer(), skip_prompt=True, skip_special_tokens=True, timeout=timeout_s
         )
 

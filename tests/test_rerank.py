@@ -1,9 +1,7 @@
-"""Rerankers, offline. A stub checkpoint stands in for the Hub so no torch is needed."""
+"""Rerankers, offline. A stub checkpoint stands in for the Hub so nothing is downloaded."""
 
 from __future__ import annotations
 
-import sys
-import types
 from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -15,7 +13,7 @@ from fixtures.eval import record
 
 from palate.agent.prompts import load
 from palate.db.connect import open_database
-from palate.errors import ConfigError, MissingExtra
+from palate.errors import ConfigError
 from palate.eval import report as reporting
 from palate.eval.harness import (
     EvalContext,
@@ -37,6 +35,7 @@ from palate.providers.base import (
     RerankResult,
 )
 from palate.providers.chat.fake import FakeChatProvider, ScriptedTurn
+from palate.providers.rerank import cross_encoder
 from palate.providers.rerank.cache import ScoreCache
 from palate.providers.rerank.identity import IdentityReranker
 from palate.providers.rerank.llm import LLMReranker, borda, parse_permutation, windows
@@ -87,26 +86,12 @@ class StubCrossEncoder:
 
 
 @pytest.fixture
-def stub_st(monkeypatch: pytest.MonkeyPatch) -> types.ModuleType:
-    module = types.ModuleType("sentence_transformers")
-    module.CrossEncoder = StubCrossEncoder  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "sentence_transformers", module)
-    return module
+def stub_st(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cross_encoder, "CrossEncoder", StubCrossEncoder)
 
 
 def build(**overrides: Any) -> Any:
-    from palate.providers.rerank.cross_encoder import CrossEncoderReranker
-
-    return CrossEncoderReranker(pin=PIN, device="cpu", **overrides)
-
-
-def test_the_cross_encoder_names_the_local_extra_when_it_is_absent() -> None:
-    from palate.providers.rerank.cross_encoder import CrossEncoderReranker
-
-    with pytest.raises(MissingExtra) as exc:
-        CrossEncoderReranker(pin=PIN, device="cpu")
-    assert exc.value.extra == "local"
-    assert "uv sync --extra local" in str(exc.value)
+    return cross_encoder.CrossEncoderReranker(pin=PIN, device="cpu", **overrides)
 
 
 def test_half_precision_on_mps_is_refused() -> None:
@@ -117,7 +102,7 @@ def test_half_precision_on_mps_is_refused() -> None:
     assert check_precision("float16", "cpu") == "float16"
 
 
-def test_the_pin_is_passed_with_keyword_arguments_only(stub_st: types.ModuleType) -> None:
+def test_the_pin_is_passed_with_keyword_arguments_only(stub_st: None) -> None:
     ranker = build(max_length=256)
     assert ranker.model.repo_id == PIN.repo_id
     assert ranker.model.revision == PIN.revision
@@ -125,7 +110,7 @@ def test_the_pin_is_passed_with_keyword_arguments_only(stub_st: types.ModuleType
     assert ranker.model_key == f"{PIN.repo_id}@{'b' * 12}"
 
 
-def test_scores_are_raw_logits_not_the_checkpoint_sigmoid(stub_st: types.ModuleType) -> None:
+def test_scores_are_raw_logits_not_the_checkpoint_sigmoid(stub_st: None) -> None:
     ranker = build(batch_size=8)
     anyio.run(lambda: ranker.rerank("a quiet journey", POOL, top_k=3, doc_version="v1"))
     call = ranker.model.seen[0]
@@ -133,7 +118,7 @@ def test_scores_are_raw_logits_not_the_checkpoint_sigmoid(stub_st: types.ModuleT
     assert call["activation_fn"](7.5) == 7.5
 
 
-def test_the_pool_is_reordered_by_the_model_not_by_the_prior(stub_st: types.ModuleType) -> None:
+def test_the_pool_is_reordered_by_the_model_not_by_the_prior(stub_st: None) -> None:
     ranker = build()
     report = anyio.run(lambda: ranker.rerank("a quiet journey", POOL, top_k=3, doc_version="v1"))
     # The prior put 2 first. Ties fall to the lower film id, so two runs never disagree.
@@ -143,7 +128,7 @@ def test_the_pool_is_reordered_by_the_model_not_by_the_prior(stub_st: types.Modu
     assert report.scores()[3] > report.scores()[2]
 
 
-def test_top_k_truncates_the_report(stub_st: types.ModuleType) -> None:
+def test_top_k_truncates_the_report(stub_st: None) -> None:
     ranker = build()
     report = anyio.run(lambda: ranker.rerank("a quiet journey", POOL, top_k=2, doc_version="v1"))
     assert report.order() == (1, 3)
@@ -151,7 +136,7 @@ def test_top_k_truncates_the_report(stub_st: types.ModuleType) -> None:
 
 
 def test_the_first_call_is_cold_and_a_warm_up_pays_that_cost_up_front(
-    stub_st: types.ModuleType,
+    stub_st: None,
 ) -> None:
     ranker = build()
 
@@ -171,14 +156,14 @@ def test_the_first_call_is_cold_and_a_warm_up_pays_that_cost_up_front(
     assert anyio.run(warm_first) is False
 
 
-def test_an_empty_pool_still_answers(stub_st: types.ModuleType) -> None:
+def test_an_empty_pool_still_answers(stub_st: None) -> None:
     ranker = build()
     report = anyio.run(lambda: ranker.rerank("anything", (), top_k=10, doc_version="v1"))
     assert report.results == ()
     assert report.n_pairs == 0
 
 
-def test_closing_drops_the_checkpoint(stub_st: types.ModuleType) -> None:
+def test_closing_drops_the_checkpoint(stub_st: None) -> None:
     ranker = build()
     anyio.run(ranker.aclose)
     assert ranker.model is None
@@ -200,7 +185,7 @@ def test_identity_honours_top_k() -> None:
     assert report.n_pairs == 3
 
 
-def test_both_rerankers_satisfy_the_protocol(stub_st: types.ModuleType) -> None:
+def test_both_rerankers_satisfy_the_protocol(stub_st: None) -> None:
     assert isinstance(IdentityReranker(), Reranker)
     assert isinstance(build(), Reranker)
 
@@ -329,9 +314,7 @@ def test_a_disabled_cache_writes_nothing_and_reads_nothing(tmp_path: Path) -> No
     store.db.close()
 
 
-def test_the_second_sweep_over_one_pool_runs_no_forward_pass(
-    tmp_path: Path, stub_st: types.ModuleType
-) -> None:
+def test_the_second_sweep_over_one_pool_runs_no_forward_pass(tmp_path: Path, stub_st: None) -> None:
     store = cached(tmp_path)
     ranker = build(cache=store)
 

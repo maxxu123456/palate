@@ -1393,6 +1393,7 @@ source = { editable = "." }
 dependencies = [
     { name = "anyio" },
     { name = "httpx" },
+    { name = "huggingface-hub" },
     { name = "numpy" },
     { name = "orjson" },
     { name = "pydantic" },
@@ -1400,20 +1401,19 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "rich" },
+    { name = "sentence-transformers" },
     { name = "sqlite-vec" },
+    { name = "torch" },
+    { name = "transformers" },
     { name = "typer" },
 ]
 
 [package.optional-dependencies]
 all = [
     { name = "fastapi" },
-    { name = "huggingface-hub" },
     { name = "matplotlib" },
     { name = "scipy" },
-    { name = "sentence-transformers" },
     { name = "sse-starlette" },
-    { name = "torch" },
-    { name = "transformers" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 api = [
@@ -1427,17 +1427,6 @@ eval = [
 ]
 experiments = [
     { name = "peft" },
-    { name = "torch" },
-    { name = "transformers" },
-]
-hf = [
-    { name = "huggingface-hub" },
-]
-local = [
-    { name = "huggingface-hub" },
-    { name = "sentence-transformers" },
-    { name = "torch" },
-    { name = "transformers" },
 ]
 
 [package.dev-dependencies]
@@ -1458,12 +1447,11 @@ requires-dist = [
     { name = "anyio", specifier = ">=4.6,<5" },
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.115,<0.120" },
     { name = "httpx", specifier = ">=0.28,<0.29" },
-    { name = "huggingface-hub", marker = "extra == 'hf'", specifier = ">=1.3,<2" },
-    { name = "huggingface-hub", marker = "extra == 'local'", specifier = ">=1.3,<2" },
+    { name = "huggingface-hub", specifier = ">=1.3,<2" },
     { name = "matplotlib", marker = "extra == 'eval'", specifier = ">=3.9,<4" },
     { name = "numpy", specifier = ">=2.1,<3" },
     { name = "orjson", specifier = ">=3.10,<4" },
-    { name = "palate", extras = ["api", "local", "hf", "eval"], marker = "extra == 'all'" },
+    { name = "palate", extras = ["api", "eval"], marker = "extra == 'all'" },
     { name = "peft", marker = "extra == 'experiments'", specifier = ">=0.14,<1" },
     { name = "pydantic", specifier = ">=2.9,<3" },
     { name = "pydantic-settings", specifier = ">=2.6,<3" },
@@ -1471,17 +1459,15 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0,<7" },
     { name = "rich", specifier = ">=13.9,<15" },
     { name = "scipy", marker = "extra == 'eval'", specifier = ">=1.14,<2" },
-    { name = "sentence-transformers", marker = "extra == 'local'", specifier = ">=6,<7" },
+    { name = "sentence-transformers", specifier = ">=6,<7" },
     { name = "sqlite-vec", specifier = ">=0.1.9,<0.2" },
     { name = "sse-starlette", marker = "extra == 'api'", specifier = ">=2.1,<3" },
-    { name = "torch", marker = "extra == 'experiments'", specifier = ">=2.9" },
-    { name = "torch", marker = "extra == 'local'", specifier = ">=2.9" },
-    { name = "transformers", marker = "extra == 'experiments'", specifier = ">=5,<6" },
-    { name = "transformers", marker = "extra == 'local'", specifier = ">=5,<6" },
+    { name = "torch", specifier = ">=2.9" },
+    { name = "transformers", specifier = ">=5,<6" },
     { name = "typer", specifier = ">=0.15,<0.17" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'api'", specifier = ">=0.32,<0.40" },
 ]
-provides-extras = ["api", "local", "hf", "eval", "experiments", "all"]
+provides-extras = ["api", "eval", "experiments", "all"]
 
 [package.metadata.requires-dev]
 dev = [
