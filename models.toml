@@ -24,3 +24,10 @@ revision = ""
 kind = "reranker"
 repo_id = "BAAI/bge-reranker-v2-m3"
 revision = ""
+
+# The chat model. Small enough to sit beside the embedder and the reranker on 24 GB,
+# and its chat template renders tools, which the agent loop needs.
+["qwen2.5-3b-instruct"]
+kind = "chat"
+repo_id = "Qwen/Qwen2.5-3B-Instruct"
+revision = "aa8e72537993ba99e69dfaafa59ed015b17504d1"

@@ -11,7 +11,7 @@ from typing import Any, Literal
 from palate.errors import ConfigError
 from palate.paths import default_home
 
-type ModelKind = Literal["embedding", "reranker"]
+type ModelKind = Literal["embedding", "reranker", "chat"]
 
 _SHA = re.compile(r"^[0-9a-f]{40}$")
 
