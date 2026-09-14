@@ -42,86 +42,81 @@ def rate(
 
 
 def test_the_providers_own_number_wins_over_any_table(traces: Database) -> None:
-    rate(traces, "openrouter", "qwen/qwen3", inp=1.0, out=2.0)
-    found = cost_for(traces, "openrouter", "qwen/qwen3", USAGE, 0.0042)
+    rate(traces, "hosted", "qwen/qwen3", inp=1.0, out=2.0)
+    found = cost_for(traces, "hosted", "qwen/qwen3", USAGE, 0.0042)
     assert found.usd == pytest.approx(0.0042)
     assert found.source == "provider"
 
 
 def test_the_table_prices_a_call_the_provider_said_nothing_about(traces: Database) -> None:
-    rate(traces, "openai_compat", "local/model", inp=1.0, out=2.0)
-    found = cost_for(traces, "openai_compat", "local/model", USAGE, None)
+    rate(traces, "hosted", "local/model", inp=1.0, out=2.0)
+    found = cost_for(traces, "hosted", "local/model", USAGE, None)
     assert found.usd == pytest.approx(1.0 + 1.0)
     assert found.source == "table"
 
 
 def test_a_model_nobody_priced_is_unknown_and_never_zero(traces: Database) -> None:
-    found = cost_for(traces, "openai_compat", "nobody/knows", USAGE, None)
+    found = cost_for(traces, "hosted", "nobody/knows", USAGE, None)
     assert found.source == "unknown"
     assert not found.known
 
 
 def test_a_wildcard_row_prices_every_model_that_provider_serves(traces: Database) -> None:
-    rate(traces, "ollama", ANY_MODEL, inp=0.0, out=0.0)
-    found = cost_for(traces, "ollama", "qwen3:8b", USAGE, None)
+    rate(traces, "hosted", ANY_MODEL, inp=0.0, out=0.0)
+    found = cost_for(traces, "hosted", "any/model", USAGE, None)
     assert found.usd == 0.0
     assert found.source == "table"
     assert found.known
 
 
 def test_an_exact_model_row_beats_the_wildcard(traces: Database) -> None:
-    rate(traces, "openrouter", ANY_MODEL, inp=10.0, out=10.0)
-    rate(traces, "openrouter", "cheap/model", inp=1.0, out=1.0)
-    found = cost_for(traces, "openrouter", "cheap/model", USAGE, None)
+    rate(traces, "hosted", ANY_MODEL, inp=10.0, out=10.0)
+    rate(traces, "hosted", "cheap/model", inp=1.0, out=1.0)
+    found = cost_for(traces, "hosted", "cheap/model", USAGE, None)
     assert found.usd == pytest.approx(1.0 + 0.5)
 
 
 def test_cached_input_is_priced_at_its_own_rate_when_there_is_one(traces: Database) -> None:
-    rate(traces, "openrouter", "cached/model", inp=10.0, out=0.0, cached=1.0)
+    rate(traces, "hosted", "cached/model", inp=10.0, out=0.0, cached=1.0)
     usage = Usage(input_tokens=1_000_000, cached_input_tokens=900_000)
-    found = cost_for(traces, "openrouter", "cached/model", usage, None)
+    found = cost_for(traces, "hosted", "cached/model", usage, None)
     assert found.usd == pytest.approx(0.1 * 10.0 + 0.9 * 1.0)
 
 
 def test_cached_input_falls_back_to_the_plain_rate_when_there_is_not(traces: Database) -> None:
-    rate(traces, "openrouter", "plain/model", inp=10.0, out=0.0)
+    rate(traces, "hosted", "plain/model", inp=10.0, out=0.0)
     usage = Usage(input_tokens=1_000_000, cached_input_tokens=900_000)
-    found = cost_for(traces, "openrouter", "plain/model", usage, None)
+    found = cost_for(traces, "hosted", "plain/model", usage, None)
     assert found.usd == pytest.approx(10.0)
 
 
 def test_the_newest_row_per_model_is_the_one_that_prices(traces: Database) -> None:
-    rate(traces, "openrouter", "moved/model", inp=10.0, out=10.0, stamp="2020-01-01T00:00:00")
-    rate(traces, "openrouter", "moved/model", inp=1.0, out=1.0, stamp="2030-01-01T00:00:00")
-    found = cost_for(traces, "openrouter", "moved/model", USAGE, None)
+    rate(traces, "hosted", "moved/model", inp=10.0, out=10.0, stamp="2020-01-01T00:00:00")
+    rate(traces, "hosted", "moved/model", inp=1.0, out=1.0, stamp="2030-01-01T00:00:00")
+    found = cost_for(traces, "hosted", "moved/model", USAGE, None)
     assert found.usd == pytest.approx(1.5)
 
 
 def test_local_inference_is_zero_from_the_provider_not_from_a_guess(traces: Database) -> None:
-    found = cost_for(traces, "ollama", "qwen3:8b", USAGE, 0.0)
+    found = cost_for(traces, "transformers", "qwen2.5-3b-instruct", USAGE, 0.0)
     assert found.usd == 0.0
     assert found.source == "provider"
 
 
 def test_the_shipped_seed_loads_and_prices_the_local_providers(traces: Database) -> None:
     loaded = seed_rates(traces, pricing_toml())
-    assert loaded >= 3
-    for provider in ("transformers", "ollama", "sentence_transformers", "fake"):
+    assert loaded == 3
+    for provider in ("transformers", "sentence_transformers", "fake"):
         found = cost_for(traces, provider, "anything", USAGE, None)
         assert found.source == "table"
         assert found.usd == 0.0
 
 
-def test_the_seed_ships_no_remote_price_it_would_have_had_to_invent(traces: Database) -> None:
+def test_the_seed_prices_only_what_runs_on_this_machine(traces: Database) -> None:
     seed_rates(traces, pricing_toml())
     rows = list(traces.read().execute("select provider from current_rates"))
-    assert {str(r["provider"]) for r in rows} == {
-        "transformers",
-        "ollama",
-        "sentence_transformers",
-        "fake",
-    }
-    assert cost_for(traces, "openrouter", "qwen/qwen3", USAGE, None).source == "unknown"
+    assert {str(r["provider"]) for r in rows} == {"transformers", "sentence_transformers", "fake"}
+    assert cost_for(traces, "hosted", "qwen/qwen3", USAGE, None).source == "unknown"
 
 
 def test_seeding_twice_leaves_one_live_rate_per_model(traces: Database) -> None:

@@ -20,21 +20,13 @@ from palate.paths import config_dir
 
 class ChatSettings(BaseModel):
     model_config = {"extra": "forbid"}
-    provider: Literal[
-        "transformers", "ollama", "openrouter", "openai_compat", "hf_inference", "fake"
-    ] = "transformers"
+    provider: Literal["transformers", "fake"] = "transformers"
     model: str = "qwen2.5-3b-instruct"
-    base_url: str | None = None
     device: str | None = None
-    api_key_env: str = "PALATE_CHAT_API_KEY"
     temperature: float = 0.2
     max_tokens: int = 1024
     timeout_s: float = 90.0
     num_ctx: int | None = 8192
-    keep_alive: str = "10m"
-    hf_provider: str = "auto"
-    openrouter_order: list[str] = Field(default_factory=list)
-    openrouter_allow_fallbacks: bool = True
     # Turn 0 rescue for small local models that emit tool calls as text.
     content_toolcall_parse: bool = True
     force_tools_on_turn0: bool = True
@@ -42,12 +34,8 @@ class ChatSettings(BaseModel):
 
 class EmbedSettings(BaseModel):
     model_config = {"extra": "forbid"}
-    provider: Literal[
-        "ollama", "sentence_transformers", "openai_compat", "hf_inference", "fake"
-    ] = "ollama"
+    provider: Literal["sentence_transformers", "fake"] = "sentence_transformers"
     model: str = "embeddinggemma"
-    base_url: str | None = None
-    api_key_env: str = "PALATE_EMBED_API_KEY"
     device: str | None = None
     batch_size: int = 64
     truncate_dim: int | None = None

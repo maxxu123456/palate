@@ -22,16 +22,17 @@ def test_defaults_need_no_files() -> None:
     s = Settings()
     assert s.chat.provider == "transformers"
     assert s.chat.model == "qwen2.5-3b-instruct"
+    assert s.embed.provider == "sentence_transformers"
     assert s.embed.model == "embeddinggemma"
     assert s.trace.payloads == "hashed"
     assert s.agent.max_turns == 8
 
 
 def test_user_config_is_read(config_file: Path) -> None:
-    config_file.write_text('[chat]\nprovider = "openrouter"\nmodel = "qwen/qwen3-30b-a3b"\n')
+    config_file.write_text('[chat]\nprovider = "fake"\nmodel = "qwen2.5-7b-instruct"\n')
     s = Settings()
-    assert s.chat.provider == "openrouter"
-    assert s.chat.model == "qwen/qwen3-30b-a3b"
+    assert s.chat.provider == "fake"
+    assert s.chat.model == "qwen2.5-7b-instruct"
     # Untouched fields keep their defaults rather than vanishing with the table.
     assert s.chat.temperature == 0.2
 
@@ -99,15 +100,12 @@ def test_masked_dump_reports_env_status(monkeypatch: pytest.MonkeyPatch) -> None
     tmdb = dump["tmdb"]
     assert isinstance(tmdb, dict)
     assert tmdb["token_env"] == {"env": "TMDB_READ_TOKEN", "status": "set"}
-    chat = dump["chat"]
-    assert isinstance(chat, dict)
-    assert chat["api_key_env"]["status"] == "missing"
     assert "secret-value" not in repr(dump)
 
 
 def test_resolve_secret_reads_by_name(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
-    secret = resolve_secret("OPENROUTER_API_KEY")
+    monkeypatch.setenv("TMDB_READ_TOKEN", "sk-test")
+    secret = resolve_secret("TMDB_READ_TOKEN")
     assert secret is not None
     assert secret.get_secret_value() == "sk-test"
     assert "sk-test" not in repr(secret)

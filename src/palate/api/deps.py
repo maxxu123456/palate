@@ -25,7 +25,6 @@ from palate.memory.sessions import SessionStore
 from palate.obs.cost import seed_rates
 from palate.obs.store import TraceStore
 from palate.providers.base import ChatProvider, EmbeddingProvider
-from palate.providers.http import client_session
 from palate.providers.registry import build_chat, build_embedder
 from palate.retrieval.recommend import LocalRecommender, Recommender
 from palate.retrieval.vocab import Vocabulary
@@ -148,35 +147,34 @@ async def build_state(settings: Settings) -> AsyncIterator[AppState]:
             )
             seed_rates(traces, paths.pricing_toml())
         tracer, store = build_tracer(settings, traces)
-        async with client_session() as http:
-            chat = build_chat(settings, client=http)
-            embedder = build_embedder(settings, client=http)
-            try:
-                demand(await fingerprint_check(db, embedder))
-                yield AppState(
-                    settings=settings,
-                    db=db,
-                    traces=traces,
-                    chat=chat,
-                    embedder=embedder,
-                    loop=AgentLoop(
-                        chat,
-                        build_registry(),
-                        PromptRegistry(),
-                        settings,
-                        transcript=Transcript(db),
-                        tracer=tracer,
-                    ),
+        chat = build_chat(settings)
+        embedder = build_embedder(settings)
+        try:
+            demand(await fingerprint_check(db, embedder))
+            yield AppState(
+                settings=settings,
+                db=db,
+                traces=traces,
+                chat=chat,
+                embedder=embedder,
+                loop=AgentLoop(
+                    chat,
+                    build_registry(),
+                    PromptRegistry(),
+                    settings,
                     transcript=Transcript(db),
-                    sessions=SessionStore(db),
-                    prefs=PreferenceStore(db),
-                    vocab=Vocabulary(db.read()),
-                    profile=profile,
-                    runs=RunRegistry(),
-                )
-            finally:
-                await chat.aclose()
-                await embedder.aclose()
+                    tracer=tracer,
+                ),
+                transcript=Transcript(db),
+                sessions=SessionStore(db),
+                prefs=PreferenceStore(db),
+                vocab=Vocabulary(db.read()),
+                profile=profile,
+                runs=RunRegistry(),
+            )
+        finally:
+            await chat.aclose()
+            await embedder.aclose()
     finally:
         if store is not None:
             store.close()

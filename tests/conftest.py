@@ -8,14 +8,8 @@ from pathlib import Path
 
 import pytest
 
-# Names that would otherwise leak a real key or a real endpoint into a test run.
-_SCRUBBED = (
-    "PALATE_CHAT_API_KEY",
-    "PALATE_EMBED_API_KEY",
-    "OPENROUTER_API_KEY",
-    "HF_TOKEN",
-    "TMDB_READ_TOKEN",
-)
+# Names that would otherwise leak a real key into a test run.
+_SCRUBBED = ("HF_TOKEN", "TMDB_READ_TOKEN")
 
 
 @pytest.fixture(autouse=True)

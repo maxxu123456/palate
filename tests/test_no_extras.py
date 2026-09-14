@@ -64,13 +64,6 @@ def test_the_hub_helpers_name_the_hf_extra() -> None:
         download.ensure_local(PIN)
 
 
-def test_the_hf_chat_adapter_asks_before_it_reaches_for_the_hub() -> None:
-    from palate.providers.chat.hf_inference import HFInferenceChat
-
-    with pytest.raises(MissingExtra):
-        HFInferenceChat(model="Qwen/Qwen3-30B-A3B-Instruct")
-
-
 def test_device_resolution_says_cpu_without_importing_torch() -> None:
     from palate.hf.device import resolve_device
 

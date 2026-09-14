@@ -6,7 +6,6 @@ import json
 import queue
 from typing import Any
 
-import httpx
 import pytest
 
 from palate.config import Settings
@@ -276,8 +275,7 @@ async def test_closing_drops_the_pipeline() -> None:
 
 async def test_the_registry_builds_the_local_provider_from_the_default_config() -> None:
     settings = Settings(chat={"device": "cpu"})
-    async with httpx.AsyncClient() as http:
-        provider = build_chat(settings, client=http)
+    provider = build_chat(settings)
     assert isinstance(provider, TransformersLocalChat)
     assert (provider.name, provider.model) == ("transformers", ALIAS)
     assert provider.max_new_tokens == settings.chat.max_tokens
@@ -286,7 +284,7 @@ async def test_the_registry_builds_the_local_provider_from_the_default_config() 
 
 @pytest.mark.torch
 async def test_the_pinned_checkpoint_answers_on_the_real_device() -> None:
-    """Needs the local extra and several gigabytes of weights, so it never runs by default."""
+    """Needs several gigabytes of weights in the cache, so it never runs by default."""
     provider = TransformersLocalChat(alias=ALIAS)
     try:
         done = await provider.complete(

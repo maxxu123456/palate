@@ -15,7 +15,6 @@ from palate.db.connect import Database, open_database
 from palate.errors import PalateError
 from palate.index import fts, verify
 from palate.index.build import BuildReport, build
-from palate.providers.http import client_session
 from palate.providers.registry import build_embedder
 
 console = Console()
@@ -32,25 +31,23 @@ async def run_build(
     db: Database, settings: Settings, *, rebuild: bool, only_missing: bool
 ) -> BuildReport:
     """Build against whichever embedding provider the settings name."""
-    async with client_session() as http:
-        embedder = build_embedder(settings, client=http)
-        try:
-            return await build(db, embedder, rebuild=rebuild, only_missing=only_missing)
-        finally:
-            await embedder.aclose()
+    embedder = build_embedder(settings)
+    try:
+        return await build(db, embedder, rebuild=rebuild, only_missing=only_missing)
+    finally:
+        await embedder.aclose()
 
 
 async def provider_drift(settings: Settings, record: verify.IndexRecord) -> str:
     """The mismatch report when the configured provider did not build this index."""
-    async with client_session() as http:
-        embedder = build_embedder(settings, client=http)
-        try:
-            return await verify.drift(record, embedder)
-        except PalateError as exc:
-            console.print(f"  could not ask the embedding provider ({exc})")
-            return ""
-        finally:
-            await embedder.aclose()
+    embedder = build_embedder(settings)
+    try:
+        return await verify.drift(record, embedder)
+    except PalateError as exc:
+        console.print(f"  could not ask the embedding provider ({exc})")
+        return ""
+    finally:
+        await embedder.aclose()
 
 
 @index_app.command("build")

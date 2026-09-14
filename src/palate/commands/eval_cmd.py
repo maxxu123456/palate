@@ -6,7 +6,6 @@ from collections.abc import Sequence
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
-from typing import Any
 
 import anyio
 import typer
@@ -41,7 +40,6 @@ from palate.eval.split import (
 )
 from palate.eval.systems import BY_NAME, FULL, SMOKE, SystemConfig, rerank_key, resolve
 from palate.providers.base import Reranker
-from palate.providers.http import client_session
 from palate.providers.registry import build_chat, build_embedder, build_reranker
 from palate.taste import profile as taste
 
@@ -164,7 +162,7 @@ def run(
 
 
 def _rerankers(
-    settings: Settings, db: Database, arms: Sequence[SystemConfig], *, http: Any, cache: bool
+    settings: Settings, db: Database, arms: Sequence[SystemConfig], *, cache: bool
 ) -> dict[str, Reranker]:
     """One reranker per arm key that was asked for, so an unused checkpoint is never loaded."""
     wanted = sorted({key for cfg in arms if (key := rerank_key(cfg)) is not None})
@@ -174,7 +172,7 @@ def _rerankers(
         if provider is None:
             continue
         try:
-            chat = build_chat(settings, client=http) if provider == "llm" else None
+            chat = build_chat(settings) if provider == "llm" else None
             out[key] = build_reranker(
                 settings, db=db, chat=chat, provider=provider, alias=key, cache=cache
             )
@@ -195,44 +193,40 @@ async def _run(
     cache: bool,
     resamples: int,
 ) -> None:
-    async with client_session() as http:
-        embedder = build_embedder(settings, client=http) if suite == "query" else None
-        rerankers = _rerankers(settings, db, arms, http=http, cache=cache)
-        try:
-            ctx = EvalContext(
-                db=db,
-                split=split,
-                seed=settings.eval.seed,
-                retrieval=settings.retrieval,
-                embedder=embedder,
-                rerankers=rerankers,
-                resamples=resamples,
+    embedder = build_embedder(settings) if suite == "query" else None
+    rerankers = _rerankers(settings, db, arms, cache=cache)
+    try:
+        ctx = EvalContext(
+            db=db,
+            split=split,
+            seed=settings.eval.seed,
+            retrieval=settings.retrieval,
+            embedder=embedder,
+            rerankers=rerankers,
+            resamples=resamples,
+        )
+        if fit and suite == "retrieval":
+            published = publish_weights(ctx, FULL)
+            console.print(
+                "fusion weights: " + ("not fitted" if published is None else published.fitted_on)
             )
-            if fit and suite == "retrieval":
-                published = publish_weights(ctx, FULL)
-                console.print(
-                    "fusion weights: "
-                    + ("not fitted" if published is None else published.fitted_on)
-                )
-            cases = (
-                {f.fold: build_review_queries(db, f) for f in split.folds}
-                if suite == "query"
-                else None
-            )
-            conditions: tuple[EvalCondition, ...] = (
-                ("query_review",) if suite == "query" else ("unconditioned",)
-            )
-            results = await run_matrix(arms, ctx, conditions=conditions, cases=cases, force=force)
-            persist(ctx, BY_NAME, results)
-            if suite == "retrieval":
-                for reference in ("full", "director_affinity"):
-                    deltas(ctx, results, reference=reference)
-            console.print(f"{len(results)} runs stored for split {split.name}")
-        finally:
-            if embedder is not None:
-                await embedder.aclose()
-            for ranker in rerankers.values():
-                await ranker.aclose()
+        cases = (
+            {f.fold: build_review_queries(db, f) for f in split.folds} if suite == "query" else None
+        )
+        conditions: tuple[EvalCondition, ...] = (
+            ("query_review",) if suite == "query" else ("unconditioned",)
+        )
+        results = await run_matrix(arms, ctx, conditions=conditions, cases=cases, force=force)
+        persist(ctx, BY_NAME, results)
+        if suite == "retrieval":
+            for reference in ("full", "director_affinity"):
+                deltas(ctx, results, reference=reference)
+        console.print(f"{len(results)} runs stored for split {split.name}")
+    finally:
+        if embedder is not None:
+            await embedder.aclose()
+        for ranker in rerankers.values():
+            await ranker.aclose()
 
 
 @app.command("report")

@@ -86,7 +86,7 @@ class ResolveReport:
 
 def response_format() -> ResponseFormat:
     """The json schema a provider that supports one is given."""
-    schema: JSONObject = render(StructuredAnswer, style="openai")
+    schema: JSONObject = render(StructuredAnswer, style="plain")
     return ResponseFormat(kind="json_schema", schema=schema, name="palate_answer")
 
 

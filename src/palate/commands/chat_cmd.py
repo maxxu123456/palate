@@ -10,7 +10,6 @@ from functools import partial
 from typing import Any
 
 import anyio
-import httpx
 import typer
 from rich.console import Console
 
@@ -30,7 +29,6 @@ from palate.obs.cost import cost_for, seed_rates
 from palate.obs.store import TraceStore
 from palate.obs.trace import NullTracer, SQLiteTracer, Tracer
 from palate.providers.base import ChatProvider, Message
-from palate.providers.http import client_session
 from palate.providers.registry import build_chat, build_embedder
 from palate.retrieval.recommend import LocalRecommender
 from palate.retrieval.vocab import Vocabulary
@@ -121,7 +119,6 @@ def _recommender(
     db: Database,
     settings: Settings,
     session_id: str,
-    http: httpx.AsyncClient,
     profile: TasteProfile | None,
 ) -> LocalRecommender | None:
     """A recommender only when there is a profile to rank against."""
@@ -129,7 +126,7 @@ def _recommender(
         return None
     return LocalRecommender(
         db,
-        embedder=build_embedder(settings, client=http),
+        embedder=build_embedder(settings),
         session_id=session_id,
         retrieval=settings.retrieval,
         profile=profile,
@@ -139,46 +136,45 @@ def _recommender(
 @asynccontextmanager
 async def wire(settings: Settings, db: Database, session_id: str | None) -> AsyncIterator[Wiring]:
     """Build the provider, the recommender and the loop, and close them in order."""
-    async with client_session() as http:
-        provider = build_chat(settings, client=http)
-        sessions = SessionStore(db)
-        session = sessions.open(
-            provider=settings.chat.provider, model=settings.chat.model, session_id=session_id
-        )
-        profile = taste.latest(db)
-        recommender = _recommender(db, settings, session.session_id, http, profile)
-        traces = open_traces(settings) if settings.trace.enabled else None
-        tracer, store = build_tracer(settings, traces)
-        try:
-            yield Wiring(
-                db=db,
-                settings=settings,
-                provider=provider,
-                loop=AgentLoop(
-                    provider,
-                    build_registry(),
-                    PromptRegistry(),
-                    settings,
-                    transcript=Transcript(db),
-                    tracer=tracer,
-                ),
+    provider = build_chat(settings)
+    sessions = SessionStore(db)
+    session = sessions.open(
+        provider=settings.chat.provider, model=settings.chat.model, session_id=session_id
+    )
+    profile = taste.latest(db)
+    recommender = _recommender(db, settings, session.session_id, profile)
+    traces = open_traces(settings) if settings.trace.enabled else None
+    tracer, store = build_tracer(settings, traces)
+    try:
+        yield Wiring(
+            db=db,
+            settings=settings,
+            provider=provider,
+            loop=AgentLoop(
+                provider,
+                build_registry(),
+                PromptRegistry(),
+                settings,
                 transcript=Transcript(db),
-                sessions=sessions,
-                session_id=session.session_id,
-                recommender=recommender,
-                profile=profile,
-                prefs=PreferenceStore(db),
-                vocab=Vocabulary(db.read()),
-                traces=traces,
-            )
-        finally:
-            await provider.aclose()
-            if recommender is not None and recommender.embedder is not None:
-                await recommender.embedder.aclose()
-            if store is not None:
-                store.close()
-            if traces is not None:
-                traces.close()
+                tracer=tracer,
+            ),
+            transcript=Transcript(db),
+            sessions=sessions,
+            session_id=session.session_id,
+            recommender=recommender,
+            profile=profile,
+            prefs=PreferenceStore(db),
+            vocab=Vocabulary(db.read()),
+            traces=traces,
+        )
+    finally:
+        await provider.aclose()
+        if recommender is not None and recommender.embedder is not None:
+            await recommender.embedder.aclose()
+        if store is not None:
+            store.close()
+        if traces is not None:
+            traces.close()
 
 
 async def one_turn(wiring: Wiring, text: str, *, quiet: bool) -> str:

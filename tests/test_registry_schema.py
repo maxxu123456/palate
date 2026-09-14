@@ -1,4 +1,4 @@
-"""One pydantic model, four dialects, and ten tools that have to survive all of them."""
+"""One pydantic model, two dialects, and ten tools that have to survive both of them."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from palate.tools.context import ToolContext
 from palate.tools.envelope import ToolErrorCode, ToolResult
 from palate.tools.schema import render
 
-STYLES: tuple[SchemaStyle, ...] = ("openai", "openai_strict", "ollama", "hf", "chat_template")
+STYLES: tuple[SchemaStyle, ...] = ("plain", "chat_template")
 
 SESSION = "ses_tools"
 
@@ -133,33 +133,15 @@ def test_every_worked_example_validates_against_its_rendered_schema(
 ) -> None:
     schema = render(module.SPEC.args_model, style=style)
     for example in module.SPEC.examples:
-        payload = example.model_dump(exclude_none=style != "openai_strict")
+        payload = example.model_dump(exclude_none=True)
         assert conforms(schema, payload) == []
 
 
-@pytest.mark.parametrize("style", ["ollama", "chat_template"])
-def test_the_inlining_dialects_leave_no_ref_behind(style: SchemaStyle) -> None:
-    for schema in build_registry().schemas(style=style):
+def test_the_template_dialect_leaves_no_ref_behind() -> None:
+    for schema in build_registry().schemas(style="chat_template"):
         rendered = repr(schema.parameters)
         assert "$ref" not in rendered
         assert "$defs" not in rendered
-
-
-def test_the_strict_dialect_requires_every_property_and_makes_optionals_nullable() -> None:
-    for schema in build_registry().schemas(style="openai_strict"):
-        properties = schema.parameters["properties"]
-        assert set(schema.parameters["required"]) == set(properties)
-        for name, node in properties.items():
-            kinds = node.get("type")
-            if isinstance(kinds, list):
-                assert "null" in kinds, f"{schema.name}.{name} is not nullable"
-
-
-def test_the_hf_dialect_flattens_enum_values_to_strings() -> None:
-    for schema in build_registry().schemas(style="hf"):
-        for node in schema.parameters["properties"].values():
-            for value in node.get("enum", []):
-                assert isinstance(value, str)
 
 
 def test_withdrawing_a_tool_removes_it_from_what_is_offered() -> None:

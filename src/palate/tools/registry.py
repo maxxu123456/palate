@@ -113,7 +113,7 @@ class ToolRegistry:
         *,
         include: Collection[str] | None = None,
         exclude: Collection[str] = (),
-        style: SchemaStyle = "openai",
+        style: SchemaStyle = "plain",
     ) -> list[ToolSchema]:
         """The tools offered on one request. exclude is how a failing tool is withdrawn."""
         wanted = [
@@ -126,7 +126,6 @@ class ToolRegistry:
                 name=spec.name,
                 description=spec.description,
                 parameters=render(spec.args_model, style=style),
-                strict=style == "openai_strict",
             )
             for spec in wanted
         ]
@@ -218,7 +217,7 @@ class ToolRegistry:
     ) -> ToolResult:
         first = exc.errors()[0]
         field_name = str(first["loc"][0]) if first["loc"] else ""
-        rendered = render(spec.args_model, style="openai")
+        rendered = render(spec.args_model, style="plain")
         if first["type"] == "extra_forbidden":
             properties = rendered.get("properties")
             real = sorted(properties) if isinstance(properties, dict) else []

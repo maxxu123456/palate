@@ -719,7 +719,7 @@ class AgentLoop:
     @staticmethod
     def _worked_example(error: ToolError, spec: ToolSpec[Any, Any]) -> ToolError:
         schema = error.schema_excerpt or excerpt(
-            render(spec.args_model, style="openai"), _field_of(error.message)
+            render(spec.args_model, style="plain"), _field_of(error.message)
         )
         if not spec.examples:
             return replace(error, schema_excerpt=schema)

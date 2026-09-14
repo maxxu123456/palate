@@ -11,7 +11,7 @@ from palate.providers.fingerprint import EmbeddingFingerprint
 type Role = Literal["system", "user", "assistant", "tool"]
 type FinishReason = Literal["stop", "length", "tool_calls", "content_filter", "error"]
 type ToolChoice = Literal["auto", "none", "required"] | tuple[Literal["tool"], str]
-type SchemaStyle = Literal["openai", "openai_strict", "ollama", "hf", "chat_template"]
+type SchemaStyle = Literal["plain", "chat_template"]
 type JSONValue = str | int | float | bool | list[JSONValue] | dict[str, JSONValue] | None
 type JSONObject = dict[str, JSONValue]
 type Vector = tuple[float, ...]
@@ -79,7 +79,6 @@ class ToolSchema:
     name: str
     description: str
     parameters: JSONObject
-    strict: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,7 +140,7 @@ class ChatCapabilities:
     streaming: bool = True
     context_window: int | None = None
     max_output_tokens: int | None = None
-    schema_style: SchemaStyle = "openai"
+    schema_style: SchemaStyle = "plain"
 
 
 @dataclass(frozen=True, slots=True)

@@ -16,7 +16,6 @@ from palate.db.connect import Database, open_database
 from palate.errors import PalateError
 from palate.obs import report
 from palate.obs.replay import ReplayResult, replay
-from palate.providers.http import client_session
 from palate.providers.registry import build_chat
 
 console = Console()
@@ -207,9 +206,8 @@ def run_replay(
 async def _replay(
     settings: Settings, db: Database, span_id: str, prompt: str | None
 ) -> ReplayResult:
-    async with client_session() as http:
-        provider = build_chat(settings, client=http)
-        try:
-            return await replay(db, span_id, provider=provider, prompt_override=prompt)
-        finally:
-            await provider.aclose()
+    provider = build_chat(settings)
+    try:
+        return await replay(db, span_id, provider=provider, prompt_override=prompt)
+    finally:
+        await provider.aclose()

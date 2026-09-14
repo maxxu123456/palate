@@ -13,7 +13,6 @@ from palate import paths
 from palate.config import Settings, load_settings
 from palate.db.connect import Database, open_database
 from palate.errors import PalateError
-from palate.providers.http import client_session
 from palate.providers.registry import build_embedder
 from palate.retrieval.candidates import HardFilters
 from palate.retrieval.recommend import LocalRecommender, RecommendRequest, RecommendResponse
@@ -29,14 +28,13 @@ def open_db(settings: Settings) -> Database:
 
 async def _recommend(db: Database, settings: Settings, req: RecommendRequest) -> RecommendResponse:
     """A query needs an embedder in the index's own space. An empty one needs nothing."""
-    async with client_session() as http:
-        embedder = build_embedder(settings, client=http) if req.query_text else None
-        try:
-            local = LocalRecommender(db, embedder=embedder, retrieval=settings.retrieval)
-            return await local.recommend(req)
-        finally:
-            if embedder is not None:
-                await embedder.aclose()
+    embedder = build_embedder(settings) if req.query_text else None
+    try:
+        local = LocalRecommender(db, embedder=embedder, retrieval=settings.retrieval)
+        return await local.recommend(req)
+    finally:
+        if embedder is not None:
+            await embedder.aclose()
 
 
 def _filters(

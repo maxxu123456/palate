@@ -20,7 +20,6 @@ from palate.extras import have
 from palate.hf.models import load as load_models
 from palate.index import verify
 from palate.providers.base import EmbeddingProvider
-from palate.providers.http import client_session
 from palate.providers.registry import build_chat, build_embedder
 
 console = Console()
@@ -106,20 +105,14 @@ def index_check(db: Database) -> Check:
 
 def key_checks(settings: Settings) -> list[Check]:
     """Which secrets are present, by env var name, never by value."""
-    names = [settings.tmdb.token_env, settings.chat.api_key_env, settings.embed.api_key_env]
-    return [
-        Check(
-            f"env {name}",
-            resolve_secret(name) is not None,
-            "set" if resolve_secret(name) else "missing",
-        )
-        for name in dict.fromkeys(names)
-    ]
+    name = settings.tmdb.token_env
+    found = resolve_secret(name) is not None
+    return [Check(f"env {name}", found, "set" if found else "missing")]
 
 
 def model_checks() -> list[Check]:
-    """Which Hub aliases are pinned, and whether the local extra is installed."""
-    checks = [
+    """Which Hub aliases are pinned, so a download is never a surprise."""
+    return [
         Check(
             f"model {alias}",
             spec.pinned,
@@ -128,29 +121,29 @@ def model_checks() -> list[Check]:
         )
         for alias, spec in sorted(load_models().items())
     ]
-    torch = have("torch")
-    checks.append(
-        Check("local extra", torch, "torch present" if torch else "absent", "uv sync --extra local")
-    )
-    return checks
+
+
+def extra_checks() -> list[Check]:
+    """The optional dependency groups, which is only the http surface."""
+    api = have("fastapi")
+    return [Check("api extra", api, "fastapi present" if api else "absent", "uv sync --extra api")]
 
 
 async def provider_checks(settings: Settings, db: Database) -> list[Check]:
     """Reachability for both providers, plus the fingerprint the index was built with."""
-    async with client_session() as http:
-        chat = build_chat(settings, client=http)
-        embedder = build_embedder(settings, client=http)
-        try:
-            chat_health = await chat.health()
-            embed_health = await embedder.health()
-            return [
-                Check(f"chat ({chat.name})", chat_health.ok, chat_health.detail),
-                Check(f"embeddings ({embedder.provider})", embed_health.ok, embed_health.detail),
-                await fingerprint_check(db, embedder),
-            ]
-        finally:
-            await chat.aclose()
-            await embedder.aclose()
+    chat = build_chat(settings)
+    embedder = build_embedder(settings)
+    try:
+        chat_health = await chat.health()
+        embed_health = await embedder.health()
+        return [
+            Check(f"chat ({chat.name})", chat_health.ok, chat_health.detail),
+            Check(f"embeddings ({embedder.provider})", embed_health.ok, embed_health.detail),
+            await fingerprint_check(db, embedder),
+        ]
+    finally:
+        await chat.aclose()
+        await embedder.aclose()
 
 
 async def fingerprint_check(db: Database, embedder: EmbeddingProvider) -> Check:
@@ -176,6 +169,7 @@ def run_checks(settings: Settings) -> list[Check]:
         checks.extend(storage_checks(db))
         checks.extend(key_checks(settings))
         checks.extend(model_checks())
+        checks.extend(extra_checks())
         checks.extend(anyio.run(partial(provider_checks, settings, db)))
     finally:
         db.close()
