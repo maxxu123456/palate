@@ -8,7 +8,7 @@ from functools import partial
 from typing import Any
 
 import anyio
-from transformers import TextIteratorStreamer, pipeline, set_seed
+from transformers import GenerationConfig, TextIteratorStreamer, pipeline, set_seed
 
 from palate.errors import ConfigError, ProviderUnavailable
 from palate.hf.cache import holds
@@ -254,14 +254,14 @@ class TransformersLocalChat:
         return f'{head}{{"name": "{wanted}", "arguments": ' if wanted else head
 
     def _generation(self, *, temperature: float, max_tokens: int | None) -> dict[str, Any]:
-        kwargs: dict[str, Any] = {
-            "max_new_tokens": max_tokens or self.max_new_tokens,
-            "return_full_text": False,
-            "do_sample": temperature > 0,
-        }
-        if temperature > 0:
-            kwargs["temperature"] = temperature
-        return kwargs
+        """A config rather than loose kwargs, which generate warns about on every single call."""
+        config = GenerationConfig(  # type: ignore[no-untyped-call]
+            max_new_tokens=max_tokens or self.max_new_tokens,
+            do_sample=temperature > 0,
+            # None leaves the checkpoint's own sampling settings alone, and greedy ignores them.
+            temperature=temperature or None,
+        )
+        return {"generation_config": config, "return_full_text": False}
 
     async def _generate(self, prompt: str, kwargs: dict[str, Any], seed: int | None = None) -> str:
         # A forward pass on the event loop stalls every other stream on the worker.

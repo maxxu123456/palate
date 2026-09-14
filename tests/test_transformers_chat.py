@@ -251,11 +251,12 @@ async def test_the_generation_kwargs_and_the_stop_string_are_applied() -> None:
     done = await provider.complete(
         [Message("user", "hi")], max_tokens=64, temperature=0.0, stop=["THE END"]
     )
-    call = pipe.calls[-1]
-    assert call["max_new_tokens"] == 64
-    assert call["do_sample"] is False
-    assert call["return_full_text"] is False
-    assert "temperature" not in call
+    config = pipe.calls[-1]["generation_config"]
+    assert config.max_new_tokens == 64
+    assert config.do_sample is False
+    assert pipe.calls[-1]["return_full_text"] is False
+    # None, so the checkpoint's own sampling settings are still the ones in force.
+    assert config.temperature is None
     assert done.content == "Two films. "
 
 
