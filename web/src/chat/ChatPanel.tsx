@@ -76,13 +76,18 @@ export function ChatPanel({
         runId.current = event.run_id
         say("palate", "")
         return
+      case "text.delta":
+        // TODO: the thinking channel belongs in the trace line, not in the answer.
+        if (event.channel !== "answer") return
+        open((turn) => ({ ...turn, text: turn.text + event.text }))
+        return
       case "tool.finished": {
         const line = { callId: event.call_id, text: `> ${event.summary}` }
         open((turn) => ({ ...turn, tools: [...turn.tools, line] }))
         return
       }
       case "recommendations":
-        open((turn) => ({ ...turn, text: event.prose }))
+        // The preamble already streamed. The per film lines are the listing, not the transcript.
         onFilms(event.films.map(asBrief))
         return
       case "run.failed":
@@ -115,7 +120,7 @@ export function ChatPanel({
 
   return (
     <section className="pane">
-      <Transcript turns={turns} />
+      <Transcript turns={turns} streaming={asking} />
       <Composer onAsk={(message) => void ask(message)} onStop={stop} asking={asking} />
     </section>
   )

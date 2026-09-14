@@ -71,7 +71,7 @@ report` prints their reason instead of a number until `uv sync --extra local`. T
 extra is also the checker's paraphrase arm, so `grounded_ratio` has no measured
 precision behind it. No collaborative filtering. Exact search stops near 100k vectors.
 
-TODO: the chat panel is behind VITE_PALATE_CHAT until the answer streams into it.
+TODO: the chat panel is behind VITE_PALATE_CHAT and does not collapse tool traces yet.
 TODO: the rating lora under experiments/ is one unreproduced run, 0.71 MAE against a
 0.78 baseline. Needs a fold aware split before it means anything.
 

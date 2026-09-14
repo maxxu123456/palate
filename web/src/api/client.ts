@@ -214,6 +214,24 @@ function parseBlock(block: string): AgentEvent | null {
   return asEvent(tag, JSON.parse(data) as Record<string, unknown>)
 }
 
+/** Consecutive deltas on one channel become one event, so a chunk costs one render. */
+function coalesce(events: AgentEvent[]): AgentEvent[] {
+  const out: AgentEvent[] = []
+  for (const event of events) {
+    const last = out[out.length - 1]
+    if (
+      event.type === "text.delta" &&
+      last?.type === "text.delta" &&
+      last.channel === event.channel
+    ) {
+      out[out.length - 1] = { ...last, text: last.text + event.text }
+      continue
+    }
+    out.push(event)
+  }
+  return out
+}
+
 /** Read one run as it happens. Server sent events over POST, so not EventSource. */
 export async function streamChat(
   ask: ChatAsk,
@@ -233,12 +251,14 @@ export async function streamChat(
     const { done, value } = await reader.read()
     if (done) break
     buffer += value.replace(/\r\n/g, "\n")
+    const events: AgentEvent[] = []
     let cut = buffer.indexOf("\n\n")
     while (cut >= 0) {
       const event = parseBlock(buffer.slice(0, cut))
-      if (event !== null) onEvent(event)
+      if (event !== null) events.push(event)
       buffer = buffer.slice(cut + 2)
       cut = buffer.indexOf("\n\n")
     }
+    for (const event of coalesce(events)) onEvent(event)
   }
 }
