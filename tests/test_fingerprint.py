@@ -32,9 +32,10 @@ GEMMA = EmbeddingFingerprint(
     document_prompt="title: none | text: ",
 )
 
-NOMIC = replace(
+# What an index built by an older palate, through a runtime this one no longer has, looks like.
+LEGACY = replace(
     GEMMA,
-    provider="ollama",
+    provider="legacy",
     model_id="nomic-embed-text",
     revision=None,
     document_prompt="search_document: ",
@@ -49,7 +50,7 @@ def test_the_key_is_sixteen_hex_and_stable() -> None:
 
 def test_the_same_model_through_two_runtimes_is_two_spaces() -> None:
     # Same name, same 768 dims, different templating. This is the whole point.
-    same_name = replace(GEMMA, provider="ollama", revision=None)
+    same_name = replace(GEMMA, provider="legacy", revision=None)
     assert same_name.dim == GEMMA.dim
     assert same_name.key != GEMMA.key
 
@@ -75,12 +76,12 @@ def test_field_order_never_changes_the_key(pairs: list[tuple[str, object]]) -> N
 
 
 def test_the_diff_names_every_field_that_moved() -> None:
-    moved = {name for name, _, _ in GEMMA.diff(NOMIC)}
+    moved = {name for name, _, _ in GEMMA.diff(LEGACY)}
     assert moved == {"provider", "model_id", "revision", "document_prompt"}
 
 
 def test_the_mismatch_report_prints_the_dim_even_when_it_matches() -> None:
-    message = mismatch_message(GEMMA, NOMIC)
+    message = mismatch_message(GEMMA, LEGACY)
     lines = message.splitlines()
     assert "cannot answer this query" in lines[0]
     assert any(line.strip().startswith("dim") and "768" in line for line in lines)
@@ -92,7 +93,7 @@ def test_the_mismatch_report_prints_the_dim_even_when_it_matches() -> None:
 def test_require_match_raises_rather_than_warning() -> None:
     require_match(GEMMA, replace(GEMMA))
     with pytest.raises(EmbeddingFingerprintMismatch) as exc:
-        require_match(GEMMA, NOMIC)
+        require_match(GEMMA, LEGACY)
     assert exc.value.index is GEMMA
 
 
