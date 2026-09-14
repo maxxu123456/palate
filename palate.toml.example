@@ -5,20 +5,17 @@ home = "~/.palate"
 # Runs in this process on MPS. No daemon, no key, about 6 GB of weights.
 provider = "transformers"
 model = "qwen2.5-3b-instruct"
-# provider = "ollama"
-# model = "qwen3:8b"
-# provider = "openrouter"
-# model = "qwen/qwen3-30b-a3b"
-# api_key_env = "OPENROUTER_API_KEY"
+# provider = "fake"      # canned replies, for exercising the wiring without a model
 
 [embed]
-provider = "ollama"
+# A separate model from chat, and a separate 1.2 GB download.
+provider = "sentence_transformers"
 model = "embeddinggemma"
 
 [rerank]
 provider = "cross_encoder"
 model = "minilm"
-# model = "bge-m3"       # accurate and seconds slower, needs uv sync --extra local
+# model = "bge-m3"       # accurate and seconds slower, and a 2.3 GB checkpoint
 # provider = "identity"  # no rerank at all, which is the control the eval measures against
 
 [tmdb]

@@ -7,15 +7,15 @@ and the chat model loads into the same process. Fitted to one viewer, not a crow
 ## Setup
 
 ```sh
-uv sync --extra local && cp .env.example .env
+uv sync && cp .env.example .env
 mkdir -p ~/.config/palate && cp palate.toml.example ~/.config/palate/palate.toml
 ```
 
-Chat runs in this process on a transformers pipeline: no daemon, no key. The first
-call downloads the pinned Qwen2.5-3B-Instruct snapshot, about 6 GB, onto MPS beside
-the embedder. A hosted model stays one config change away, `provider = "openrouter"`
-or any OpenAI-compatible `base_url`. Embeddings are a separate provider because most
-chat hosts do not serve them. Keys live in env vars, TMDB's in `TMDB_READ_TOKEN`.
+Everything is Hugging Face and everything is local: no daemon, no inference
+key. Chat is a transformers pipeline, embeddings are sentence-transformers,
+reranking is a cross-encoder, all three on MPS in this process. The first run
+of each pulls its pinned snapshot, about 7 GB together. Embeddings stay a provider
+of their own. TMDB needs `TMDB_READ_TOKEN`, a gated repo needs `HF_TOKEN`.
 
 ## Usage
 
@@ -66,10 +66,10 @@ palate eval split build && palate eval run && make readme-table
 Works: ingest, crawl, corpus, index, taste profile, retrieval, eval harness, rerank,
 agent, cli chat, http api, listing ui. The table above is the committed fold results.
 
-Both rerankers are eval arms and an arm only runs where its checkpoint is, so `eval
-report` prints their reason instead of a number until `uv sync --extra local`. That
-extra is also the checker's paraphrase arm, so `grounded_ratio` has no measured
-precision behind it. No collaborative filtering. Exact search stops near 100k vectors.
+Both rerankers are eval arms and an arm only runs where its checkpoint already is, so
+`eval report` prints their reason instead of a number until the weights are pulled. The
+checker's paraphrase arm is not wired up, so `grounded_ratio` has no measured precision
+behind it. No collaborative filtering. Exact search stops near 100k vectors.
 
 TODO: the chat panel is behind VITE_PALATE_CHAT and does not collapse tool traces yet.
 TODO: the rating lora under experiments/ is one unreproduced run, 0.71 MAE against a
