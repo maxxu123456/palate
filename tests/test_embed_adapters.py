@@ -9,6 +9,7 @@ import pytest
 
 from palate.config import Settings
 from palate.errors import ConfigError
+from palate.hf import models
 from palate.hf.models import BRANCHES, ModelPin, ModelSpec, load, pin
 from palate.providers.base import EmbeddingProvider
 from palate.providers.embed import sentence_transformers as st_embed
@@ -120,7 +121,8 @@ def test_models_toml_loads_and_refuses_a_moving_revision(tmp_path: Any) -> None:
     gemma = aliases["embeddinggemma"]
     assert gemma.repo_id == "google/embeddinggemma-300m"
     assert gemma.query_prompt != gemma.document_prompt
-    assert gemma.pinned is False
+    # Every shipped alias carries a sha, so a fresh clone can build all of them.
+    assert all(spec.pinned for spec in aliases.values())
     moving = tmp_path / "models.toml"
     moving.write_text('[x]\nrepo_id = "a/b"\nrevision = "main"\n')
     with pytest.raises(ConfigError) as exc:
@@ -130,10 +132,12 @@ def test_models_toml_loads_and_refuses_a_moving_revision(tmp_path: Any) -> None:
 
 
 def test_an_unpinned_alias_names_the_command_that_pins_it(tmp_path: Any) -> None:
+    blank = tmp_path / "models.toml"
+    blank.write_text('[embeddinggemma]\nrepo_id = "a/b"\nrevision = ""\n')
     with pytest.raises(ConfigError) as exc:
-        pin("embeddinggemma")
+        pin("embeddinggemma", path=blank)
     assert "palate models pull embeddinggemma" in str(exc.value)
-    pinned = tmp_path / "models.toml"
+    pinned = tmp_path / "pinned.toml"
     pinned.write_text(f'[x]\nrepo_id = "a/b"\nrevision = "{"a" * 40}"\ndim = 768\n')
     assert pin("x", path=pinned).revision == "a" * 40
 
@@ -143,8 +147,12 @@ def test_a_spec_only_counts_as_pinned_with_a_real_sha() -> None:
     assert ModelSpec("x", "embedding", "a/b", revision="f" * 40).pinned is True
 
 
-async def test_the_registry_refuses_an_unpinned_default_rather_than_guessing() -> None:
-    # The shipped models.toml has no sha for the embedder, so the default cannot be built here.
+async def test_the_registry_refuses_an_unpinned_default_rather_than_guessing(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    blank = tmp_path / "models.toml"
+    blank.write_text('[embeddinggemma]\nrepo_id = "a/b"\nrevision = ""\n')
+    monkeypatch.setattr(models, "default_path", lambda: blank)
     with pytest.raises(ConfigError):
         build_embedder(Settings())
     fake = build_embedder(Settings(embed={"provider": "fake"}))

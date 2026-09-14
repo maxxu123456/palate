@@ -18,7 +18,7 @@ sentence-transformers, reranking is a cross-encoder, all three on MPS and pulled
 - rerank, cross-encoder/ms-marco-MiniLM-L6-v2, 90 MB
 
 `models.toml` pins each alias to a Hub commit sha, since a moved revision quietly invalidates
-every index built from it. Only chat has one, so paste a sha beside the other two first.
+every index built from it. Nothing resolves a sha at runtime, so edit that file to move a pin.
 
 ## Usage
 
@@ -65,11 +65,10 @@ palate eval split build && palate eval run && make readme-table
 ## Status
 
 Works: ingest, crawl, corpus, index, taste profile, retrieval, eval harness, rerank, agent,
-cli chat, http api, listing ui. The table above is the committed fold results. The llm rerank
-arm runs, the two cross-encoder arms do not: their aliases have no sha, so `eval report`
-prints a reason there instead of a number. The checker's paraphrase arm is not wired up, so
-`grounded_ratio` has no measured precision. No collaborative filtering, and exact search
-stops near 100k vectors.
+cli chat, http api, listing ui. The table above is the committed fold results, taken before
+the two cross-encoder rerank arms could be built, so it reports only the llm rerank arm. The
+checker's paraphrase arm is not wired up, so `grounded_ratio` has no measured precision. No
+collaborative filtering, and exact search stops near 100k vectors.
 
 TODO: the chat panel is behind VITE_PALATE_CHAT and does not collapse tool traces yet.
 TODO: the rating lora under experiments/ is one unreproduced run, 0.71 MAE against a 0.78
