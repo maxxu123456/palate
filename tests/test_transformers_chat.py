@@ -57,7 +57,9 @@ class FakeTokenizer:
                 "tokenize": tokenize,
             }
         )
-        return json.dumps({"messages": conversation, "tools": tools})
+        rendered = json.dumps({"messages": conversation, "tools": tools})
+        # A real template names the wrapper it wants a call in, and the adapter sniffs for it.
+        return f"{rendered}\ncall inside <tool_call></tool_call>\n" if tools else rendered
 
     def encode(self, text: str) -> list[int]:
         return list(range(len(text.split())))
@@ -168,6 +170,35 @@ async def test_tool_choice_none_offers_no_tools_at_all() -> None:
     provider, pipe = build("Two films.")
     await provider.complete([Message("user", "hi")], tools=[SEARCH_TOOL], tool_choice="none")
     assert pipe.tokenizer.seen[-1]["tools"] is None
+
+
+async def test_required_seeds_the_call_opener_so_prose_is_not_an_option() -> None:
+    # The fake replies with the body only, the way the model does once the opener is in the prompt.
+    body = '\n{"name": "search_films", "arguments": {"query": "slow and cold"}}\n</tool_call>'
+    provider, pipe = build(body)
+    done = await provider.complete(
+        [Message("user", "hi")], tools=[SEARCH_TOOL], tool_choice="required"
+    )
+    assert pipe.calls[-1]["prompt"].endswith("<tool_call>\n")
+    assert done.finish_reason == "tool_calls"
+    assert done.tool_calls[0].arguments == {"query": "slow and cold"}
+
+
+async def test_naming_a_tool_seeds_its_name_too() -> None:
+    provider, pipe = build(' {"query": "slow and cold"}}\n</tool_call>')
+    done = await provider.complete(
+        [Message("user", "hi")], tools=[SEARCH_TOOL], tool_choice=("tool", "search_films")
+    )
+    assert pipe.calls[-1]["prompt"].endswith('<tool_call>\n{"name": "search_films", "arguments": ')
+    assert done.tool_calls[0].name == "search_films"
+
+
+async def test_auto_seeds_nothing_and_a_template_without_the_marker_is_left_alone() -> None:
+    provider, pipe = build("Two films.")
+    await provider.complete([Message("user", "hi")], tools=[SEARCH_TOOL])
+    assert not pipe.calls[-1]["prompt"].endswith("<tool_call>\n")
+    # The fake template never writes the marker, so there is nothing to seed and nothing is.
+    assert provider._opener("no marker here", [SEARCH_TOOL], "required") == ""
 
 
 async def test_a_tool_call_is_read_out_of_the_generated_text() -> None:

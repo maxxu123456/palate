@@ -36,6 +36,9 @@ from palate.providers.tokens import count_tokens
 # An empty queue for this long means generation died without closing the streamer.
 STALL_TIMEOUT_S = 90.0
 
+# Nothing here constrains decoding, so a forced call is forced by seeding this into the prompt.
+CALL_OPEN = "<tool_call>"
+
 _DONE = object()
 
 
@@ -98,15 +101,17 @@ class TransformersLocalChat:
         turn = self._turn
         await self._ready()
         prompt = self._render(messages, tools, tool_choice=tool_choice)
+        opener = self._opener(prompt, tools, tool_choice)
         started = time.perf_counter()
         kwargs = self._generation(temperature=temperature, max_tokens=max_tokens)
-        text = _cut(await self._generate(prompt, kwargs, seed=seed), stop)
+        raw = await self._generate(prompt + opener, kwargs, seed=seed)
+        text = _cut(opener + raw, stop)
         calls, content = self._calls_of(text, tools, turn=turn)
         return Completion(
             content=content,
             tool_calls=calls,
             finish_reason="tool_calls" if calls else "stop",
-            usage=self._usage(prompt, text),
+            usage=self._usage(prompt + opener, raw),
             model=self.model,
             response_model=self._response_model(),
             latency_ms=(time.perf_counter() - started) * 1000,
@@ -131,6 +136,7 @@ class TransformersLocalChat:
         turn = self._turn
         await self._ready()
         prompt = self._render(messages, tools, tool_choice=tool_choice)
+        opener = self._opener(prompt, tools, tool_choice)
         streamer = self._streamer(timeout_s or self.timeout_s)
         kwargs = self._generation(temperature=temperature, max_tokens=max_tokens)
         # A call arrives as ordinary text, so releasing it token by token shows the user its json.
@@ -138,7 +144,7 @@ class TransformersLocalChat:
         pieces: list[str] = []
         async with anyio.create_task_group() as group:
             group.start_soon(
-                partial(self._generate, prompt, {**kwargs, "streamer": streamer}, seed)
+                partial(self._generate, prompt + opener, {**kwargs, "streamer": streamer}, seed)
             )
             step = iter(streamer)
             while True:
@@ -149,7 +155,7 @@ class TransformersLocalChat:
                 pieces.append(str(piece))
                 if not withhold:
                     yield ChatChunk(delta_text=str(piece))
-        text = _cut("".join(pieces), stop)
+        text = _cut(opener + "".join(pieces), stop)
         calls, content = self._calls_of(text, tools, turn=turn)
         if withhold and content:
             yield ChatChunk(delta_text=content)
@@ -163,7 +169,8 @@ class TransformersLocalChat:
                 )
             )
         yield ChatChunk(
-            finish_reason="tool_calls" if calls else "stop", usage=self._usage(prompt, text)
+            finish_reason="tool_calls" if calls else "stop",
+            usage=self._usage(prompt + opener, "".join(pieces)),
         )
 
     async def capabilities(self) -> ChatCapabilities:
@@ -235,6 +242,16 @@ class TransformersLocalChat:
                 tokenize=False,
             )
         )
+
+    def _opener(self, prompt: str, tools: Sequence[ToolSchema], choice: ToolChoice) -> str:
+        """The head of a forced call, seeded into the prompt so decoding cannot answer in prose."""
+        if not tools or choice in ("auto", "none") or CALL_OPEN not in prompt:
+            return ""
+        wanted = choice[1] if isinstance(choice, tuple) else ""
+        if wanted and wanted not in {t.name for t in tools}:
+            wanted = ""
+        head = f"{CALL_OPEN}\n"
+        return f'{head}{{"name": "{wanted}", "arguments": ' if wanted else head
 
     def _generation(self, *, temperature: float, max_tokens: int | None) -> dict[str, Any]:
         kwargs: dict[str, Any] = {
