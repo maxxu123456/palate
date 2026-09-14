@@ -92,6 +92,11 @@ textarea {
   min-height: 0;
 }
 
+/* The chat panel is behind a flag, and with it off the listing takes the whole width. */
+.panes--solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .pane {
   display: flex;
   flex-direction: column;
@@ -337,23 +342,16 @@ textarea {
   font-weight: 500;
 }
 
+.traces {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
 .trace {
-  display: block;
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: 0;
   border-top: 1px solid var(--rule);
   padding: 3px 0 3px 1rem;
   color: var(--muted);
-  cursor: pointer;
-}
-
-.trace__detail {
-  padding: 0 0 4px 2rem;
-  color: var(--muted);
-  white-space: pre-wrap;
-  overflow-x: auto;
 }
 
 .composer {

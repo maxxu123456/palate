@@ -12,11 +12,10 @@ mkdir -p ~/.config/palate && cp palate.toml.example ~/.config/palate/palate.toml
 brew install ollama && ollama serve && ollama pull qwen3:8b  # default provider
 ```
 
-For a hosted model set `provider = "openrouter"` and the key name in
-`api_key_env`. Any OpenAI-compatible `base_url` works too. Embeddings are a
-separate provider because most chat hosts do not serve them: `uv sync --extra
-local` runs google/embeddinggemma-300m on MPS. Keys live in env vars, never in
-the config. A TMDB v4 token goes in `TMDB_READ_TOKEN`.
+For a hosted model set `provider = "openrouter"` and the key name in `api_key_env`.
+Any OpenAI-compatible `base_url` works too. Embeddings are a separate provider
+because most chat hosts do not serve them: `uv sync --extra local` runs
+google/embeddinggemma-300m on MPS. Keys live in env vars, TMDB's in `TMDB_READ_TOKEN`.
 
 ## Usage
 
@@ -32,23 +31,20 @@ palate chat "what should I watch tonight, nothing russian"
 palate serve  # the same loop over http on 127.0.0.1:8000, needs --extra api
 ```
 
-`chat` is a hand-rolled loop over ten tools. The model returns ids, never titles:
-the prose is assembled from database rows and every sentence is checked against
-what the run retrieved. Seven guards end a run and all of them still answer.
-`palate traces show <run>` prints the span tree with tokens and cost, from a
-second file holding hashes rather than text unless `trace.payloads = "full"`.
+`chat` is a hand-rolled loop over ten tools. The model returns ids, never titles: the
+prose is assembled from database rows and every sentence is checked against what the
+run retrieved. Seven guards end a run and all of them still answer. `palate traces show
+<run>` prints the span tree, from a file of hashes unless `trace.payloads` is full.
 
 ## Evaluation
 
-The holdout is temporal. A Letterboxd export dates a rating when it was entered,
-so a backlog import stamps thousands of films on one afternoon, and any day over
-2 percent of the history is train-only in every fold.
+The holdout is temporal: a backlog import stamps thousands of films on one afternoon,
+so any day over 2 percent of the history is train-only in every fold. 240 planted
+ratings over two folds, and every interval spans zero, so read the shape not the rank.
 
 ```sh
 palate eval split build && palate eval run && make readme-table
 ```
-
-240 planted ratings over two folds. Every interval spans zero: read the shape.
 
 <!-- eval-table:start -->
 
@@ -65,15 +61,19 @@ palate eval split build && palate eval run && make readme-table
 
 <!-- eval-table:end -->
 
-## What does not work yet
+## Status
 
-Both rerankers are eval arms and an arm only runs where its checkpoint is, so
-`eval report` prints their reason instead of a number. `uv sync --extra local`
-then `palate eval run` puts them against each other on NDCG, milliseconds and
-dollars at once. That extra is also the checker's paraphrase arm, without which
-a reworded plot line is marked unsupported, and the checker has no measured
-precision yet, so `grounded_ratio` is not a number to quote. No collaborative
-filtering. Neighbour search is exact and stops scaling past 100k vectors.
+Works: ingest, crawl, corpus, index, taste profile, retrieval, eval harness, rerank,
+agent, cli chat, http api, listing ui. The table above is the committed fold results.
+
+Both rerankers are eval arms and an arm only runs where its checkpoint is, so `eval
+report` prints their reason instead of a number until `uv sync --extra local`. That
+extra is also the checker's paraphrase arm, so `grounded_ratio` has no measured
+precision behind it. No collaborative filtering. Exact search stops near 100k vectors.
+
+TODO: the chat panel is behind VITE_PALATE_CHAT until the answer streams into it.
+TODO: the rating lora under experiments/ is one unreproduced run, 0.71 MAE against a
+0.78 baseline. Needs a fold aware split before it means anything.
 
 ## License
 

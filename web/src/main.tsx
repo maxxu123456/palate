@@ -1,8 +1,9 @@
-import { StrictMode, useEffect, useRef, useState } from "react"
+import { StrictMode, useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 
-import { api, asBrief, streamChat, type FilmBrief, type Health, type Recommended } from "./api/client"
-import type { AgentEvent } from "./api/events"
+import { api, type FilmBrief, type Health, type Recommended } from "./api/client"
+import { ChatPanel } from "./chat/ChatPanel"
+import { CHAT_ENABLED } from "./config"
 import { FilmDetail } from "./film/FilmDetail"
 import { FilmRow } from "./film/FilmRow"
 import { ProfilePanel } from "./profile/ProfilePanel"
@@ -13,51 +14,14 @@ type View = "programme" | "taste" | "traces"
 
 type Listed = FilmBrief | Recommended
 
-interface Trace {
-  id: string
-  line: string
-  detail: string
-}
-
-interface Turn {
-  who: "you" | "palate"
-  text: string
-  traces: Trace[]
-}
-
 function ranked(film: Listed): Recommended | undefined {
   return "score" in film ? film : undefined
-}
-
-function lastTurn(turns: Turn[], change: (turn: Turn) => Turn): Turn[] {
-  if (turns.length === 0) return turns
-  return turns.map((turn, index) => (index === turns.length - 1 ? change(turn) : turn))
-}
-
-function Traces({ traces }: { traces: Trace[] }) {
-  const [open, setOpen] = useState<string | null>(null)
-  return (
-    <>
-      {traces.map((trace) => (
-        <div key={trace.id}>
-          <button
-            className="trace"
-            aria-expanded={open === trace.id}
-            onClick={() => setOpen(open === trace.id ? null : trace.id)}
-          >
-            {trace.line}
-          </button>
-          {open === trace.id ? <div className="trace__detail">{trace.detail}</div> : null}
-        </div>
-      ))}
-    </>
-  )
 }
 
 function Listing({ films, reflow }: { films: Listed[]; reflow: number }) {
   const [open, setOpen] = useState<number | null>(null)
   if (films.length === 0) {
-    return <p className="empty">Nothing listed yet. Say what you want above, or ask on the right.</p>
+    return <p className="empty">Nothing listed yet. Say what you want above.</p>
   }
   return (
     <ol className="listing listing--reflow" key={reflow}>
@@ -76,58 +40,13 @@ function Listing({ films, reflow }: { films: Listed[]; reflow: number }) {
   )
 }
 
-function Composer({
-  onAsk,
-  onStop,
-  asking,
-}: {
-  onAsk: (message: string) => void
-  onStop: () => void
-  asking: boolean
-}) {
-  const [draft, setDraft] = useState("")
-  const submit = () => {
-    if (draft.trim() === "" || asking) return
-    onAsk(draft.trim())
-    setDraft("")
-  }
-  return (
-    <div className="composer">
-      <textarea
-        value={draft}
-        placeholder="what are you in the mood for"
-        aria-label="what are you in the mood for"
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault()
-            submit()
-          }
-        }}
-      />
-      {asking ? (
-        <button onClick={onStop}>Stop</button>
-      ) : (
-        <button onClick={submit} disabled={draft.trim() === ""}>
-          Ask
-        </button>
-      )}
-    </div>
-  )
-}
-
 function App() {
   const [view, setView] = useState<View>("programme")
   const [films, setFilms] = useState<Listed[]>([])
   const [reflow, setReflow] = useState(0)
-  const [turns, setTurns] = useState<Turn[]>([])
   const [health, setHealth] = useState<Health | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [asking, setAsking] = useState(false)
   const [wanted, setWanted] = useState("")
-  const session = useRef<string | null>(null)
-  const runId = useRef<string | null>(null)
-  const abort = useRef<AbortController | null>(null)
 
   function showProblem(error: Error) {
     setNotice(error.message)
@@ -136,6 +55,7 @@ function App() {
   function list(found: Listed[]) {
     setFilms(found)
     setReflow((n) => n + 1)
+    setView("programme")
   }
 
   useEffect(() => {
@@ -144,63 +64,10 @@ function App() {
 
   function programme(query: string) {
     setNotice(null)
-    setView("programme")
     api
       .recommend(query)
       .then((answer) => list(answer.films))
       .catch(showProblem)
-  }
-
-  function absorb(event: AgentEvent) {
-    switch (event.type) {
-      case "run.started":
-        session.current = event.session_id
-        runId.current = event.run_id
-        setTurns((old) => [...old, { who: "palate", text: "", traces: [] }])
-        return
-      case "text.delta":
-        if (event.channel !== "answer") return
-        setTurns((old) => lastTurn(old, (turn) => ({ ...turn, text: turn.text + event.text })))
-        return
-      case "tool.finished": {
-        const trace = {
-          id: event.call_id,
-          line: `> ${event.summary}`,
-          detail: JSON.stringify(event.meta, null, 2),
-        }
-        setTurns((old) => lastTurn(old, (turn) => ({ ...turn, traces: [...turn.traces, trace] })))
-        return
-      }
-      case "recommendations":
-        list(event.films.map(asBrief))
-        setView("programme")
-        return
-      case "run.failed":
-        setNotice(event.message)
-        return
-      default:
-        return
-    }
-  }
-
-  async function ask(message: string) {
-    setNotice(null)
-    setTurns((old) => [...old, { who: "you", text: message, traces: [] }])
-    setAsking(true)
-    abort.current = new AbortController()
-    try {
-      await streamChat({ message, session_id: session.current }, absorb, abort.current.signal)
-    } catch (error) {
-      if ((error as Error).name !== "AbortError") showProblem(error as Error)
-    } finally {
-      setAsking(false)
-      abort.current = null
-    }
-  }
-
-  function stop() {
-    if (runId.current !== null) void api.cancel(runId.current)
-    abort.current?.abort()
   }
 
   return (
@@ -217,7 +84,7 @@ function App() {
           )}
         </span>
       </header>
-      <div className="panes">
+      <div className={CHAT_ENABLED ? "panes" : "panes panes--solo"}>
         <section className="pane pane--listing">
           <div className="pane__head">
             <nav className="views">
@@ -251,22 +118,7 @@ function App() {
           {view === "traces" ? <Waterfall /> : null}
           {view === "programme" ? <Listing films={films} reflow={reflow} /> : null}
         </section>
-        <section className="pane">
-          <div className="transcript">
-            {turns.length === 0 ? (
-              <p className="empty">Ask for what you are in the mood for.</p>
-            ) : (
-              turns.map((turn, index) => (
-                <div className={`turn turn--${turn.who}`} key={index}>
-                  <div className="turn__who">{turn.who}</div>
-                  <div className="turn__body">{turn.text}</div>
-                  <Traces traces={turn.traces} />
-                </div>
-              ))
-            )}
-          </div>
-          <Composer onAsk={(message) => void ask(message)} onStop={stop} asking={asking} />
-        </section>
+        {CHAT_ENABLED ? <ChatPanel onFilms={list} onProblem={showProblem} /> : null}
       </div>
     </div>
   )
