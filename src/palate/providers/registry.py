@@ -15,6 +15,7 @@ from palate.providers.chat.ollama import BASE_URL as OLLAMA_URL
 from palate.providers.chat.ollama import OllamaChat
 from palate.providers.chat.openai_compat import OpenAICompatChat
 from palate.providers.chat.openrouter import OpenRouterChat
+from palate.providers.chat.transformers_local import TransformersLocalChat
 from palate.providers.embed.fake import FakeEmbedder
 from palate.providers.embed.hf_inference import HFInferenceEmbedder
 from palate.providers.embed.ollama import BASE_URL as OLLAMA_EMBED_URL
@@ -31,6 +32,15 @@ FAKE_REPLY = "the fake provider is selected, so no model was called"
 def build_chat(settings: Settings, *, client: httpx.AsyncClient) -> ChatProvider:
     """Build the configured chat provider. The client is shared and closed by the caller."""
     chat = settings.chat
+    if chat.provider == "transformers":
+        return TransformersLocalChat(
+            alias=chat.model,
+            device=chat.device,
+            context_window=chat.num_ctx,
+            max_new_tokens=chat.max_tokens,
+            timeout_s=chat.timeout_s,
+            parse_content_tool_calls=chat.content_toolcall_parse,
+        )
     if chat.provider == "ollama":
         return OllamaChat(
             model=chat.model,

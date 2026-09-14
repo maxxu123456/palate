@@ -106,7 +106,7 @@ def test_local_inference_is_zero_from_the_provider_not_from_a_guess(traces: Data
 def test_the_shipped_seed_loads_and_prices_the_local_providers(traces: Database) -> None:
     loaded = seed_rates(traces, pricing_toml())
     assert loaded >= 3
-    for provider in ("ollama", "sentence_transformers", "fake"):
+    for provider in ("transformers", "ollama", "sentence_transformers", "fake"):
         found = cost_for(traces, provider, "anything", USAGE, None)
         assert found.source == "table"
         assert found.usd == 0.0
@@ -115,7 +115,12 @@ def test_the_shipped_seed_loads_and_prices_the_local_providers(traces: Database)
 def test_the_seed_ships_no_remote_price_it_would_have_had_to_invent(traces: Database) -> None:
     seed_rates(traces, pricing_toml())
     rows = list(traces.read().execute("select provider from current_rates"))
-    assert {str(r["provider"]) for r in rows} == {"ollama", "sentence_transformers", "fake"}
+    assert {str(r["provider"]) for r in rows} == {
+        "transformers",
+        "ollama",
+        "sentence_transformers",
+        "fake",
+    }
     assert cost_for(traces, "openrouter", "qwen/qwen3", USAGE, None).source == "unknown"
 
 

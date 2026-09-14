@@ -2,8 +2,11 @@
 home = "~/.palate"
 
 [chat]
-provider = "ollama"
-model = "qwen3:8b"
+# Runs in this process on MPS. No daemon, no key, about 6 GB of weights.
+provider = "transformers"
+model = "qwen2.5-3b-instruct"
+# provider = "ollama"
+# model = "qwen3:8b"
 # provider = "openrouter"
 # model = "qwen/qwen3-30b-a3b"
 # api_key_env = "OPENROUTER_API_KEY"

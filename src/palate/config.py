@@ -20,9 +20,12 @@ from palate.paths import config_dir
 
 class ChatSettings(BaseModel):
     model_config = {"extra": "forbid"}
-    provider: Literal["ollama", "openrouter", "openai_compat", "hf_inference", "fake"] = "ollama"
-    model: str = "qwen3:8b"
+    provider: Literal[
+        "transformers", "ollama", "openrouter", "openai_compat", "hf_inference", "fake"
+    ] = "transformers"
+    model: str = "qwen2.5-3b-instruct"
     base_url: str | None = None
+    device: str | None = None
     api_key_env: str = "PALATE_CHAT_API_KEY"
     temperature: float = 0.2
     max_tokens: int = 1024

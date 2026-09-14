@@ -2,20 +2,20 @@
 
 A film recommender built on one person's Letterboxd history. Everything runs on
 the laptop: the corpus is a SQLite file, the embeddings live in the same file,
-and the chat model is whatever you point it at. Fitted to one viewer, not a crowd.
+and the chat model loads into the same process. Fitted to one viewer, not a crowd.
 
 ## Setup
 
 ```sh
-uv sync && cp .env.example .env
+uv sync --extra local && cp .env.example .env
 mkdir -p ~/.config/palate && cp palate.toml.example ~/.config/palate/palate.toml
-brew install ollama && ollama serve && ollama pull qwen3:8b  # default provider
 ```
 
-For a hosted model set `provider = "openrouter"` and the key name in `api_key_env`.
-Any OpenAI-compatible `base_url` works too. Embeddings are a separate provider
-because most chat hosts do not serve them: `uv sync --extra local` runs
-google/embeddinggemma-300m on MPS. Keys live in env vars, TMDB's in `TMDB_READ_TOKEN`.
+Chat runs in this process on a transformers pipeline: no daemon, no key. The first
+call downloads the pinned Qwen2.5-3B-Instruct snapshot, about 6 GB, onto MPS beside
+the embedder. A hosted model stays one config change away, `provider = "openrouter"`
+or any OpenAI-compatible `base_url`. Embeddings are a separate provider because most
+chat hosts do not serve them. Keys live in env vars, TMDB's in `TMDB_READ_TOKEN`.
 
 ## Usage
 

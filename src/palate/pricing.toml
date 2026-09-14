@@ -17,6 +17,12 @@
 # A model of "*" matches every model that provider serves.
 
 [[rate]]
+provider = "transformers"
+model = "*"
+input_per_mtok = 0.0
+output_per_mtok = 0.0
+
+[[rate]]
 provider = "ollama"
 model = "*"
 input_per_mtok = 0.0

@@ -6,10 +6,13 @@ import json
 import queue
 from typing import Any
 
+import httpx
 import pytest
 
+from palate.config import Settings
 from palate.providers.base import ChatProvider, Message, ToolCall, ToolSchema
 from palate.providers.chat.transformers_local import TransformersLocalChat
+from palate.providers.registry import build_chat
 from palate.providers.streamacc import ToolCallAccumulator
 from palate.providers.tokens import count_tokens
 from palate.tools.catalog import build_registry
@@ -269,6 +272,16 @@ async def test_closing_drops_the_pipeline() -> None:
     assert provider.count_tokens(messages) != count_tokens(messages)
     await provider.aclose()
     assert provider.count_tokens(messages) == count_tokens(messages)
+
+
+async def test_the_registry_builds_the_local_provider_from_the_default_config() -> None:
+    settings = Settings(chat={"device": "cpu"})
+    async with httpx.AsyncClient() as http:
+        provider = build_chat(settings, client=http)
+    assert isinstance(provider, TransformersLocalChat)
+    assert (provider.name, provider.model) == ("transformers", ALIAS)
+    assert provider.max_new_tokens == settings.chat.max_tokens
+    assert provider.context_window == settings.chat.num_ctx
 
 
 @pytest.mark.torch

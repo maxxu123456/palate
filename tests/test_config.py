@@ -20,7 +20,8 @@ from palate.paths import Paths, resolve
 
 def test_defaults_need_no_files() -> None:
     s = Settings()
-    assert s.chat.provider == "ollama"
+    assert s.chat.provider == "transformers"
+    assert s.chat.model == "qwen2.5-3b-instruct"
     assert s.embed.model == "embeddinggemma"
     assert s.trace.payloads == "hashed"
     assert s.agent.max_turns == 8
