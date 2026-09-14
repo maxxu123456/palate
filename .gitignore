@@ -18,3 +18,5 @@ palate.toml
 web/node_modules/
 web/dist/
 eval/report.md
+experiments/rating_lora/data/
+experiments/rating_lora/runs/

@@ -1,0 +1,18 @@
+# One run. Small base model on purpose: the dataset is a few hundred lines of metadata,
+# and anything larger memorises the history instead of learning the taste.
+base_model: google/gemma-3-270m
+max_length: 320
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj]
+
+train:
+  learning_rate: 0.0002
+  batch_size: 8
+  epochs: 3
+  seed: 0
+
+out_dir: runs/gemma-270m-r16

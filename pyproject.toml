@@ -66,6 +66,14 @@ eval = [
   "matplotlib>=3.9,<4",
 ]
 
+# The rating experiment under experiments/. Deliberately outside "all": CI never
+# installs it and the finetune only runs on a rented GPU.
+experiments = [
+  "torch>=2.9",
+  "transformers>=5,<6",
+  "peft>=0.14,<1",
+]
+
 all = ["palate[api,local,hf,eval]"]
 
 [project.scripts]
