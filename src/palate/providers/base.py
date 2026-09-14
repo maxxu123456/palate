@@ -11,7 +11,7 @@ from palate.providers.fingerprint import EmbeddingFingerprint
 type Role = Literal["system", "user", "assistant", "tool"]
 type FinishReason = Literal["stop", "length", "tool_calls", "content_filter", "error"]
 type ToolChoice = Literal["auto", "none", "required"] | tuple[Literal["tool"], str]
-type SchemaStyle = Literal["openai", "openai_strict", "ollama", "hf"]
+type SchemaStyle = Literal["openai", "openai_strict", "ollama", "hf", "chat_template"]
 type JSONValue = str | int | float | bool | list[JSONValue] | dict[str, JSONValue] | None
 type JSONObject = dict[str, JSONValue]
 type Vector = tuple[float, ...]

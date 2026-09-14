@@ -20,7 +20,7 @@ from palate.tools.context import ToolContext
 from palate.tools.envelope import ToolErrorCode, ToolResult
 from palate.tools.schema import render
 
-STYLES: tuple[SchemaStyle, ...] = ("openai", "openai_strict", "ollama", "hf")
+STYLES: tuple[SchemaStyle, ...] = ("openai", "openai_strict", "ollama", "hf", "chat_template")
 
 SESSION = "ses_tools"
 
@@ -137,8 +137,9 @@ def test_every_worked_example_validates_against_its_rendered_schema(
         assert conforms(schema, payload) == []
 
 
-def test_the_ollama_dialect_inlines_every_ref() -> None:
-    for schema in build_registry().schemas(style="ollama"):
+@pytest.mark.parametrize("style", ["ollama", "chat_template"])
+def test_the_inlining_dialects_leave_no_ref_behind(style: SchemaStyle) -> None:
+    for schema in build_registry().schemas(style=style):
         rendered = repr(schema.parameters)
         assert "$ref" not in rendered
         assert "$defs" not in rendered

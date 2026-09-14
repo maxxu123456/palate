@@ -15,7 +15,7 @@ def render(model: type[BaseModel], *, style: SchemaStyle) -> JSONObject:
     """The argument schema as one provider dialect wants to receive it."""
     schema: dict[str, Any] = model.model_json_schema()
     schema.pop("title", None)
-    if style == "ollama":
+    if style in ("ollama", "chat_template"):
         schema = _inline_defs(schema)
     if style == "openai_strict":
         schema = _strictify(schema)
@@ -28,7 +28,7 @@ def render(model: type[BaseModel], *, style: SchemaStyle) -> JSONObject:
 
 
 def _inline_defs(schema: dict[str, Any]) -> dict[str, Any]:
-    """Splice $defs into their $ref sites. Ollama and several local servers ignore $ref."""
+    """Splice $defs into their $ref sites. A $ref nothing resolves is noise in the prompt."""
     defs = schema.get("$defs", {})
     if not defs:
         return schema
