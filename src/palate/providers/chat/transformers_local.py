@@ -126,13 +126,15 @@ class TransformersLocalChat:
         timeout_s: float | None = None,
         span: SpanLike | None = None,
     ) -> AsyncIterator[ChatChunk]:
-        """Text off the streamer as it is decoded, with the tool call read out at the end."""
+        """Text off the streamer as it is decoded, unless a tool call could be hiding in it."""
         self._turn += 1
         turn = self._turn
         await self._ready()
         prompt = self._render(messages, tools, tool_choice=tool_choice)
         streamer = self._streamer(timeout_s or self.timeout_s)
         kwargs = self._generation(temperature=temperature, max_tokens=max_tokens)
+        # A call arrives as ordinary text, so releasing it token by token shows the user its json.
+        withhold = bool(tools) and self.parse_content_tool_calls
         pieces: list[str] = []
         async with anyio.create_task_group() as group:
             group.start_soon(
@@ -145,9 +147,12 @@ class TransformersLocalChat:
                 if piece is _DONE:
                     break
                 pieces.append(str(piece))
-                yield ChatChunk(delta_text=str(piece))
+                if not withhold:
+                    yield ChatChunk(delta_text=str(piece))
         text = _cut("".join(pieces), stop)
-        calls = self._calls_of(text, tools, turn=turn)[0]
+        calls, content = self._calls_of(text, tools, turn=turn)
+        if withhold and content:
+            yield ChatChunk(delta_text=content)
         for index, call in enumerate(calls):
             yield ChatChunk(
                 tool_call_delta=ToolCallDelta(

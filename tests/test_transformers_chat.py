@@ -191,7 +191,10 @@ async def test_an_answer_object_is_not_mistaken_for_a_call_when_no_tool_is_offer
 async def test_streaming_gives_the_text_then_the_call_then_the_counts() -> None:
     provider, _ = build(f"Looking now. {TOOL_CALL}")
     chunks = [c async for c in provider.stream([Message("user", "hi")], tools=[SEARCH_TOOL])]
-    assert "".join(c.delta_text for c in chunks).startswith("Looking now. ")
+    streamed = "".join(c.delta_text for c in chunks)
+    # The call is text on this transport, so streaming it raw would put json in front of the user.
+    assert streamed == "Looking now."
+    assert "tool_call" not in streamed
     accumulator = ToolCallAccumulator(turn=1)
     for chunk in chunks:
         if chunk.tool_call_delta is not None:
@@ -202,6 +205,14 @@ async def test_streaming_gives_the_text_then_the_call_then_the_counts() -> None:
     assert chunks[-1].finish_reason == "tool_calls"
     assert chunks[-1].usage is not None
     assert chunks[-1].usage.input_tokens > 0
+
+
+async def test_streaming_with_no_tools_offered_still_arrives_piece_by_piece() -> None:
+    provider, _ = build("Two slow films, both wet.")
+    chunks = [c async for c in provider.stream([Message("user", "hi")])]
+    deltas = [c.delta_text for c in chunks if c.delta_text]
+    assert len(deltas) > 1
+    assert "".join(deltas) == "Two slow films, both wet."
 
 
 async def test_the_generation_kwargs_and_the_stop_string_are_applied() -> None:
