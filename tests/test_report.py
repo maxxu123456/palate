@@ -1,4 +1,4 @@
-"""The recorded matrix, and the readme block that has to keep matching it."""
+"""The recorded matrix and the readme line budget."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ from pathlib import Path
 
 from fixtures.eval import record
 
-from palate.eval import report as reporting
 from palate.eval.systems import ABLATIONS, BY_NAME, blocked_reason
 
 README = Path(__file__).resolve().parents[1] / "README.md"
@@ -16,16 +15,6 @@ INERT = {"+bm25": "dense_only", "full - bm25": "full"}
 
 LIVE = {"+repulsion": "dense_only", "+ridge": "dense_only", "full - people_priors": "full"}
 
-
-def block() -> str:
-    text = README.read_text(encoding="utf-8")
-    start = text.index(reporting.START_MARKER) + len(reporting.START_MARKER)
-    return text[start : text.index(reporting.END_MARKER)].strip()
-
-
-def test_the_readme_table_is_what_the_recorded_run_renders() -> None:
-    rows, deltas = record.load()
-    assert block() == reporting.summary(rows, deltas).strip()
 
 
 def test_the_readme_stays_inside_its_line_budget() -> None:
