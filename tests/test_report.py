@@ -16,7 +16,6 @@ INERT = {"+bm25": "dense_only", "full - bm25": "full"}
 LIVE = {"+repulsion": "dense_only", "+ridge": "dense_only", "full - people_priors": "full"}
 
 
-
 def test_the_readme_stays_inside_its_line_budget() -> None:
     assert len(README.read_text(encoding="utf-8").splitlines()) <= 80
 
